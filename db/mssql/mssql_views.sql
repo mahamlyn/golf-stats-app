@@ -108,3 +108,56 @@ GROUP BY m.id, m.first_name, m.last_name, c.id, c.name;
 GO
 
 -- End of views
+
+-- Handicap estimate view
+-- Note: This is a simplified handicap-like estimate because the schema does not include
+-- course rating/slope required for an official USGA handicap. The view computes
+-- round differentials as (total_strokes - course_par), considers up to the most
+-- recent 20 rounds per player, selects the best 8 differentials (or all if fewer
+-- than 8), averages them, and applies a 0.96 multiplier (common adjustment factor).
+IF OBJECT_ID('dbo.vw_Player_HandicapEstimate', 'V') IS NOT NULL
+  DROP VIEW dbo.vw_Player_HandicapEstimate;
+GO
+
+CREATE VIEW dbo.vw_Player_HandicapEstimate
+AS
+WITH recent AS (
+  SELECT
+    r.id,
+    r.member_id,
+    r.date_played,
+    r.total_strokes,
+    c.par,
+    CAST(r.total_strokes - c.par AS FLOAT) AS diff,
+    ROW_NUMBER() OVER (PARTITION BY r.member_id ORDER BY r.date_played DESC, r.id DESC) AS rn,
+    COUNT(*) OVER (PARTITION BY r.member_id) AS total_rounds_all
+  FROM dbo.rounds r
+  LEFT JOIN dbo.courses c ON r.course_id = c.id
+  WHERE r.total_strokes IS NOT NULL AND c.par IS NOT NULL
+),
+recent20 AS (
+  SELECT * FROM recent WHERE rn <= 20
+),
+ranked AS (
+  SELECT
+    r20.*,
+    ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY diff ASC, date_played DESC, id DESC) AS diff_rank,
+    COUNT(*) OVER (PARTITION BY member_id) AS recent_count
+  FROM recent20 r20
+),
+best AS (
+  -- If recent_count >= 8, take best 8 diffs; otherwise take all recent diffs
+  SELECT * FROM ranked
+  WHERE (recent_count >= 8 AND diff_rank <= 8) OR (recent_count < 8)
+)
+SELECT
+  m.id AS member_id,
+  m.first_name,
+  m.last_name,
+  COALESCE(MAX(b.recent_count), 0) AS rounds_considered,
+  COALESCE(MAX(b.total_rounds_all), 0) AS rounds_total,
+  CASE WHEN COUNT(b.diff) = 0 THEN NULL ELSE ROUND(AVG(b.diff) * 0.96, 2) END AS handicap_estimate
+FROM dbo.members m
+LEFT JOIN best b ON b.member_id = m.id
+GROUP BY m.id, m.first_name, m.last_name;
+GO
