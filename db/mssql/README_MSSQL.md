@@ -1,4 +1,4 @@
-MS-SQL deployment
+MS-SQL Deployment
 
 This file describes how to create a SQL Server database and deploy the schema using the provided PowerShell script.
 
