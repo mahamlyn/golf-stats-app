@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <h2>Players</h2>
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Rounds</th>
+          <th>Avg Score</th>
+          <th>Avg Putts</th>
+          <th>Avg GIR</th>
+          <th>Avg Fairways</th>
+          <th>Avg To Par</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in players %}
+        <tr>
+          <td>{{ p.first_name }} {{ p.last_name }}</td>
+          <td>{{ p.rounds_played or 0 }}</td>
+          <td>{{ '%.1f'|format(p.avg_score) if p.avg_score is not none else '' }}</td>
+          <td>{{ '%.1f'|format(p.avg_putts) if p.avg_putts is not none else '' }}</td>
+          <td>{{ '%.1f'|format(p.avg_gir) if p.avg_gir is not none else '' }}</td>
+          <td>{{ '%.1f'|format(p.avg_fairways_hit) if p.avg_fairways_hit is not none else '' }}</td>
+          <td>{{ '%.1f'|format(p.avg_to_par) if p.avg_to_par is not none else '' }}</td>
+          <td><a class="btn btn-sm btn-primary" href="/player/{{ p.member_id }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

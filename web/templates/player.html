@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <h2>{{ summary.first_name }} {{ summary.last_name }}</h2>
+    <p>
+      <strong>Rounds played:</strong> {{ summary.rounds_played or 0 }} &nbsp; 
+      <strong>Avg score:</strong> {{ '%.1f'|format(summary.avg_score) if summary.avg_score is not none else 'N/A' }}
+    </p>
+
+    <h4>Handicap estimate</h4>
+    <p>{{ handicap.handicap_estimate if handicap and handicap.handicap_estimate is not none else 'Not enough data' }}</p>
+
+    <h4>Hole averages</h4>
+    <table class="table table-sm">
+      <thead><tr><th>Hole</th><th>Avg Strokes</th><th>Avg Putts</th><th>Times</th><th>Par</th></tr></thead>
+      <tbody>
+        {% for h in holes %}
+        <tr>
+          <td>{{ h.hole_number }}</td>
+          <td>{{ '%.2f'|format(h.avg_strokes) }}</td>
+          <td>{{ '%.2f'|format(h.avg_putts) }}</td>
+          <td>{{ h.hole_count }}</td>
+          <td>{{ '%.1f'|format(h.avg_par) if h.avg_par is not none else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h4>Recent rounds</h4>
+    <table class="table table-sm">
+      <thead><tr><th>Date</th><th>Course</th><th>Score</th><th>Putts</th><th>Fairways</th><th>GIR</th></tr></thead>
+      <tbody>
+        {% for r in rounds %}
+        <tr>
+          <td>{{ r.date_played }}</td>
+          <td>{{ r.course_name or '' }}</td>
+          <td>{{ r.total_strokes }}</td>
+          <td>{{ r.putts }}</td>
+          <td>{{ r.fairways_hit }}</td>
+          <td>{{ r.gir }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h4>Performance by course</h4>
+    <table class="table table-sm">
+      <thead><tr><th>Course</th><th>Rounds</th><th>Avg Score</th><th>Best</th><th>Worst</th></tr></thead>
+      <tbody>
+        {% for c in perf %}
+        <tr>
+          <td>{{ c.course_name or '' }}</td>
+          <td>{{ c.rounds_played }}</td>
+          <td>{{ '%.1f'|format(c.avg_score) if c.avg_score is not none else '' }}</td>
+          <td>{{ c.best_score }}</td>
+          <td>{{ c.worst_score }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  </div>
+</div>
+{% endblock %}
