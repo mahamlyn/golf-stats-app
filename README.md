@@ -12,65 +12,65 @@
 
 **Quick Start**
 
-- SQLite (local dev):
+## golf-stats-app
+
+Purpose
+-------
+This repository contains the golf-stats application: database schemas, import tooling, and CSV templates for tracking golf rounds, players, courses, and hole-by-hole scores.
+
+Repository layout
+-----------------
+- `db/` — Database artifacts and tooling
+	- `sqlite/` — SQLite schema and Python initializer (`schema.sql`, `init_db.py`) for local development and quick testing.
+	- `mssql/` — SQL Server schema and creation script (`mssql_schema.sql`, `create_db.ps1`) for production/shared deployments.
+	- `staging/` — Staging tables, `dbo.ImportFromStaging` stored procedure, and `staging_import.ps1` for BULK INSERT-based large imports.
+	- `tools/` — Client-side import utilities (`import_csv.ps1`) for uploading CSVs from a client machine.
+	- `csv_templates/` — Example CSV files (`members.csv`, `courses.csv`, `rounds.csv`, `holes.csv`) and a short guide on expected columns.
+
+Quick start
+-----------
+SQLite (local development)
 
 ```powershell
-cd .\golf-stats-app\db\sqlite
+cd .\db\sqlite
 python .\init_db.py --init
 python .\init_db.py --sample
 python .\init_db.py --show
 ```
 
-- SQL Server (create DB and deploy schema):
+SQL Server (create database and deploy schema)
 
 ```powershell
-cd .\golf-stats-app\db\mssql
+cd .\db\mssql
 .\create_db.ps1 -ServerInstance "localhost" -DatabaseName "GolfStats" -SchemaPath ".\mssql_schema.sql"
 ```
 
-- Bulk staging import (server must access CSVs):
+Large CSV import (server-side BULK INSERT)
 
 ```powershell
-cd .\golf-stats-app\db\staging
+cd .\db\staging
 .\staging_import.ps1 -ServerInstance "localhost" -DatabaseName "GolfStats" -CsvFolder "..\csv_templates"
 ```
 
-- Client-side CSV import (no server file access):
+Client-side CSV import (no server file access)
 
 ```powershell
-cd .\golf-stats-app\db\tools
+cd .\db\tools
 .\import_csv.ps1 -ServerInstance "localhost" -DatabaseName "GolfStats"
 ```
 
-**Important Notes**
-- **BULK INSERT requirement:** Server-side `BULK INSERT` requires the SQL Server service account to be able to read the CSV files (local path or network share). Use the client import if you cannot provide server access.
-- **Credentials:** Avoid hard-coded passwords in scripts. Prefer Windows authentication, the Windows Credential Manager, or a secret store.
+Important notes
+---------------
+- BULK INSERT requires the SQL Server service account to be able to read CSV files from the provided path (local or network share). If the server cannot access your files, use the client-side importer or a `bcp`-based uploader.
+- Scripts prefer Windows Authentication; avoid embedding plain-text credentials. Use Credential Manager or a secrets store for sensitive credentials.
 
-If you want, I can now:
-- Commit these changes to `main` with a descriptive commit message.
-- Add a `bcp`-based client uploader, or
-- Add row-level validation/logging to the staging stored procedure.
+Recommended next steps
+----------------------
+- Commit any local changes (I can commit this file for you).  
+- Add a `bcp`-based client uploader if you need to push large CSVs from client machines to staging.  
+- Add row-level validation/logging in `dbo.ImportFromStaging` for better import diagnostics.
 
-Tell me which next step you'd like.
-
-Top-level folders
--
-- `automation/` — automation scripts and configs (Ansible, PowerShell profile snippets, etc.).
-- `config-files/` — repository root (this project). Contains the `golf-stats-app/` and other sample folders.
-- `golf-stats-app/` — the golf stats application and database utilities. Subfolders of interest:
-	- `db/` — database artifacts and tooling. Organized into:
-		- `sqlite/` — local SQLite schema and Python initializer (`schema.sql`, `init_db.py`). Good for local dev.
-		- `mssql/` — SQL Server schema and creation script (`mssql_schema.sql`, `create_db.ps1`). Use for production or shared DB instances.
-		- `staging/` — staging tables and stored procedure for high-volume imports plus `staging_import.ps1` which uses `BULK INSERT`.
-		- `tools/` — client-side import utilities (`import_csv.ps1`) for smaller CSV sets where server file access is not available.
-		- `csv_templates/` — example CSV templates and README describing expected columns and import flow.
-	- `README.md` files inside each `db/*` subfolder explain usage and requirements.
-- `sample-stuff/` — misc examples and scratch files.
-
-Quick start (PowerShell)
--
-1. Use the SQLite flow for local testing:
-
+If you'd like, I will commit this README update and run a quick `git status`/`git log -n 5` so you can review the commit. Tell me to proceed.
 ```powershell
 cd .\golf-stats-app\db\sqlite
 python .\init_db.py --init
