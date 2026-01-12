@@ -1,4 +1,4 @@
-## golf-stats-app
+## Golf Stats App
 
 **Purpose:** This folder contains the golf-stats application utilities: database schemas, import tooling, and CSV templates used to manage golf scores and related data for family members.
 
@@ -12,7 +12,7 @@
 
 **Quick Start**
 
-## golf-stats-app
+## Golf Stats App
 
 Purpose
 -------
