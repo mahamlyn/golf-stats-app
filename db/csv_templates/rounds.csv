@@ -1,0 +1,3 @@
+ext_round_id,member_email,course_name,date_played,total_strokes,putts,fairways_hit,gir,notes
+r1,alice@example.com,Sunnyvale GC,2026-01-10,88,36,8,6,Practice round
+r2,bob@example.com,Lakeside Country Club,2026-01-11,92,38,7,5,Club fitting
