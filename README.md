@@ -1,31 +1,18 @@
-## Golf Stats App
-
-**Purpose:** This folder contains the golf-stats application utilities: database schemas, import tooling, and CSV templates used to manage golf scores and related data for family members.
-
-**Contents:**
-- **`db/`**: Database artifacts and tooling.
-	- **`sqlite/`**: SQLite schema and initializer (`schema.sql`, `init_db.py`) — quick local/dev setup.
-	- **`mssql/`**: SQL Server schema and creation script (`mssql_schema.sql`, `create_db.ps1`) — production/shared DB deployments.
-	- **`staging/`**: Staging tables, `dbo.ImportFromStaging` stored procedure, and `staging_import.ps1` for BULK INSERT flows.
-	- **`tools/`**: Client-side import scripts (`import_csv.ps1`) for machines that cannot place files on the SQL Server host.
-	- **`csv_templates/`**: Example CSV files (`members.csv`, `courses.csv`, `rounds.csv`, `holes.csv`) and guidance for formatting.
-
-**Quick Start**
-
-## Golf Stats App
+# Golf Stats App
 
 Purpose
 -------
-This repository contains the golf-stats application: database schemas, import tooling, and CSV templates for tracking golf rounds, players, courses, and hole-by-hole scores.
+This folder contains the golf-stats application: database schemas, import tooling, CSV templates, and a minimal web UI for viewing player statistics.
 
 Repository layout
 -----------------
 - `db/` — Database artifacts and tooling
-	- `sqlite/` — SQLite schema and Python initializer (`schema.sql`, `init_db.py`) for local development and quick testing.
-	- `mssql/` — SQL Server schema and creation script (`mssql_schema.sql`, `create_db.ps1`) for production/shared deployments.
-	- `staging/` — Staging tables, `dbo.ImportFromStaging` stored procedure, and `staging_import.ps1` for BULK INSERT-based large imports.
-	- `tools/` — Client-side import utilities (`import_csv.ps1`) for uploading CSVs from a client machine.
-	- `csv_templates/` — Example CSV files (`members.csv`, `courses.csv`, `rounds.csv`, `holes.csv`) and a short guide on expected columns.
+  - `sqlite/` — SQLite schema and Python initializer (`schema.sql`, `init_db.py`) for local development and quick testing.
+  - `mssql/` — SQL Server schema and creation script (`mssql_schema.sql`, `create_db.ps1`) for production/shared deployments.
+  - `staging/` — Staging tables, `dbo.ImportFromStaging` stored procedure, and `staging_import.ps1` for BULK INSERT-based large imports.
+  - `tools/` — Client-side import utilities (`import_csv.ps1`) for uploading CSVs from a client machine.
+  - `csv_templates/` — Example CSV files (`members.csv`, `courses.csv`, `rounds.csv`, `holes.csv`) and a short guide on expected columns.
+  - `web/` — Minimal Flask web UI to browse players and view player details (`app.py`, templates, `requirements.txt`).
 
 Quick start
 -----------
@@ -59,52 +46,55 @@ cd .\db\tools
 .\import_csv.ps1 -ServerInstance "localhost" -DatabaseName "GolfStats"
 ```
 
+Web UI (minimal Flask app)
+--------------------------
+The repository now contains a small Flask app in `web/` that displays:
+- A players list (from `vw_Player_Summary`) and
+- A player detail page with hole averages, recent rounds, performance by course, and handicap estimate.
+
+Quick run (from `golf-stats-app/web`):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python .\app.py
+```
+
+By default the app uses SQLite at `../db/sqlite/golfstats.db`. To use SQL Server, set the `DATABASE_URL` environment variable (see `web/.env.example`).
+
+SQL views used by the web UI
+---------------------------
+The web UI expects these views to exist (deployed via `db/mssql/mssql_views.sql`):
+- `vw_Player_Summary` — per-player aggregates (avg score, rounds played, putts, etc.)
+- `vw_Player_HoleAverages` — per-player per-hole averages
+- `vw_Player_RecentRounds` — recent rounds with course metadata
+- `vw_Player_PerformanceByCourse` — per-player per-course aggregates
+- `vw_Player_HandicapEstimate` — simplified handicap-like estimate (best 8 of most recent 20 diffs)
+
+Handicap estimate note
+-----------------------
+The included `vw_Player_HandicapEstimate` is a simplified estimate using `total_strokes - course_par` differentials. It does NOT use course rating or slope and therefore cannot produce an official USGA handicap index. To compute official differentials and indexes you should add `course_rating` (FLOAT) and `slope` (INT) to `dbo.courses` and compute differentials as `(adjusted_score - course_rating) * 113 / slope`.
+
+Deploying the SQL views
+-----------------------
+Run the views script against your target database (PowerShell example):
+
+```powershell
+Import-Module SqlServer
+Invoke-Sqlcmd -ServerInstance "localhost" -Database "GolfStats" -InputFile ".\db\mssql\mssql_views.sql"
+```
+
 Important notes
 ---------------
-- BULK INSERT requires the SQL Server service account to be able to read CSV files from the provided path (local or network share). If the server cannot access your files, use the client-side importer or a `bcp`-based uploader.
-- Scripts prefer Windows Authentication; avoid embedding plain-text credentials. Use Credential Manager or a secrets store for sensitive credentials.
+- `BULK INSERT` requires the SQL Server service account to be able to read CSV files from the provided path (local or network share). Use the client-side importer if server access is unavailable.
+- Avoid storing plain-text credentials in scripts. Prefer Windows Authentication, Credential Manager, or a secrets store.
 
 Recommended next steps
 ----------------------
-- Commit any local changes (I can commit this file for you).  
-- Add a `bcp`-based client uploader if you need to push large CSVs from client machines to staging.  
-- Add row-level validation/logging in `dbo.ImportFromStaging` for better import diagnostics.
+- Push local commits to the remote repository (`git push origin main`).
+- Add `course_rating` and `slope` to `dbo.courses` and update the handicap view to compute official differentials.
+- Add search, pagination, or authentication to the web UI.
 
-If you'd like, I will commit this README update and run a quick `git status`/`git log -n 5` so you can review the commit. Tell me to proceed.
-```powershell
-cd .\golf-stats-app\db\sqlite
-python .\init_db.py --init
-python .\init_db.py --sample
-python .\init_db.py --show
-```
-
-2. Create a SQL Server database and deploy schema:
-
-```powershell
-cd .\golf-stats-app\db\mssql
-.\create_db.ps1 -ServerInstance "localhost" -DatabaseName "GolfStats" -SchemaPath ".\mssql_schema.sql"
-```
-
-3. For large CSV imports (server must access CSV paths):
-
-```powershell
-cd .\golf-stats-app\db\staging
-.\staging_import.ps1 -ServerInstance "localhost" -DatabaseName "GolfStats" -CsvFolder "..\csv_templates"
-```
-
-4. For smaller CSV imports from a client machine (no server file access):
-
-```powershell
-cd .\golf-stats-app\db\tools
-.\import_csv.ps1 -ServerInstance "localhost" -DatabaseName "GolfStats"
-```
-
-Notes & next steps
--
-- The repository is organized to keep dev (SQLite) and production (MSSQL) workflows separate. If you want, I can:
-	- Add a `bcp`-based client loader that pushes CSVs from your machine to staging without copying files to the server,
-	- Add validation/logging to the staging stored proc for row-level errors,
-	- Add a simple API or UI to insert/view stats.
-
-If you'd like one of those next steps, tell me which and I'll add a plan and implement it.
+If you'd like, I can perform any of the recommended next steps — tell me which one and I'll add a plan and implement it.
 
