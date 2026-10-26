@@ -9,7 +9,7 @@ Run in order, e.g. with `sqlcmd -S .\SQLEXPRESS -E -i <script>`.
 | Script | Purpose |
 | --- | --- |
 | [01_create_schema.sql](01_create_schema.sql) | Creates the database, tables, constraints, validation trigger, views and stored procedures. Safe to re-run. |
-| [02_seed_sample_data.sql](02_seed_sample_data.sql) | Adds a sample 9-hole course (holes 1-9 from the scorecard). Rename the placeholder course name. |
+| [02_seed_sample_data.sql](02_seed_sample_data.sql) | Adds three sample courses (9, 9 and 18 holes), three players and three rounds with scores. The Par 3 course uses holes 1-9 from the scorecard; its name is a placeholder. |
 
 ## Entity Relationship Diagram
 
@@ -26,6 +26,10 @@ erDiagram
         int CourseId PK
         nvarchar CourseName UK
         tinyint NumHoles "9 or 18"
+        nvarchar Description "optional, 500 chars"
+        nvarchar Notes "optional"
+        varbinary Photo "optional image"
+        nvarchar PhotoContentType
     }
     CourseHole {
         int CourseId PK, FK

@@ -15,6 +15,20 @@ CREATE TABLE dbo.Course (
 );
 GO
 
+-- Course details added after the first release; each ALTER is skipped if the column exists.
+IF COL_LENGTH(N'dbo.Course', N'Description') IS NULL
+    ALTER TABLE dbo.Course ADD Description NVARCHAR(500) NULL;
+GO
+IF COL_LENGTH(N'dbo.Course', N'Notes') IS NULL
+    ALTER TABLE dbo.Course ADD Notes NVARCHAR(MAX) NULL;
+GO
+IF COL_LENGTH(N'dbo.Course', N'Photo') IS NULL
+    ALTER TABLE dbo.Course ADD Photo VARBINARY(MAX) NULL;
+GO
+IF COL_LENGTH(N'dbo.Course', N'PhotoContentType') IS NULL
+    ALTER TABLE dbo.Course ADD PhotoContentType NVARCHAR(100) NULL;
+GO
+
 -- Printed scorecard data: one row per hole per course.
 IF OBJECT_ID(N'dbo.CourseHole', N'U') IS NULL
 CREATE TABLE dbo.CourseHole (
