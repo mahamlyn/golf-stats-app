@@ -4,12 +4,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Golf Stats</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script>
+// Runs before the page renders so the saved theme applies without a flash.
+const THEME_KEY = 'golf-stats-theme';
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+function getTheme() {
+  try { return localStorage.getItem(THEME_KEY) || 'system'; } catch { return 'system'; }
+}
+function applyTheme() {
+  const choice = getTheme();
+  const dark = choice === 'dark' || (choice === 'system' && systemDark.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+}
+function setTheme(choice) {
+  try { localStorage.setItem(THEME_KEY, choice); } catch { /* storage unavailable */ }
+  applyTheme();
+}
+systemDark.addEventListener('change', applyTheme);
+window.addEventListener('beforeprint', () => { document.documentElement.dataset.theme = 'light'; });
+window.addEventListener('afterprint', applyTheme);
+applyTheme();
+</script>
 <style>
   :root {
     --bg: #f3f5f7; --surface: #fff; --text: #172026; --muted: #6b7782; --border: #e4e8ec;
     --brand: #16a34a; --brand-dark: #15803d; --side: #0f1c17; --side-text: #a8b7af;
     --good: #15803d; --bad: #dc2626; --radius: 12px;
+    --th-bg: #f8fafb; --hover: #f0faf3;
+    --ok-bg: #f0fdf4; --ok-border: #bbf7d0; --ok-text: #166534;
+    --err-bg: #fef2f2; --err-border: #fecaca; --err-text: #991b1b;
     --shadow: 0 1px 2px rgba(16,24,40,.05), 0 4px 12px rgba(16,24,40,.06);
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0b1210; --surface: #141f1b; --text: #e6eeea; --muted: #94a39b; --border: #26352d;
+    --brand-dark: #4ade80; --side: #070d0b; --good: #4ade80; --bad: #f87171;
+    --th-bg: #1a2822; --hover: #1b2b24;
+    --ok-bg: #0f2a1b; --ok-border: #166534; --ok-text: #86efac;
+    --err-bg: #2a1212; --err-border: #7f1d1d; --err-text: #fca5a5;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 12px rgba(0,0,0,.35);
   }
   * { box-sizing: border-box; }
   body { font-family: Inter, "Segoe UI", system-ui, sans-serif; margin: 0; background: var(--bg);
@@ -18,8 +52,7 @@
   aside { width: 230px; flex-shrink: 0; background: var(--side); color: #fff; padding: 1.5rem 1rem;
           display: flex; flex-direction: column; gap: 1.5rem; position: sticky; top: 0; height: 100vh; }
   .brand { display: flex; align-items: center; gap: .65rem; font-size: 1.15rem; font-weight: 700; padding: 0 .5rem; }
-  .brand i { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-             background: linear-gradient(135deg, #22c55e, #15803d); font-style: normal; }
+  .brand .logo { width: 34px; height: 34px; border-radius: 10px; }
   nav { display: flex; flex-direction: column; gap: .25rem; }
   nav button { border: 0; background: transparent; color: var(--side-text); text-align: left; font: inherit;
                padding: .7rem .85rem; border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; }
@@ -35,18 +68,18 @@
   table { border-collapse: separate; border-spacing: 0; width: 100%; background: var(--surface);
           margin: .5rem 0 1.5rem; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
   th, td { padding: .75rem 1rem; text-align: left; }
-  th { background: #f8fafb; color: var(--muted); font-size: .75rem; text-transform: uppercase;
+  th { background: var(--th-bg); color: var(--muted); font-size: .75rem; text-transform: uppercase;
        letter-spacing: .05em; font-weight: 600; border-bottom: 1px solid var(--border); }
   td { border-bottom: 1px solid var(--border); }
   tbody tr:last-child td { border-bottom: 0; }
   tr.click { cursor: pointer; transition: background .12s; }
-  tr.click:hover { background: #f0faf3; }
+  tr.click:hover { background: var(--hover); }
 
   .under { color: var(--good); font-weight: 600; }
   .over { color: var(--bad); font-weight: 600; }
   .err, .ok { padding: .85rem 1rem; border-radius: 10px; font-size: .9rem; }
-  .err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-  .ok { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+  .err { background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-border); }
+  .ok { background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border); }
 
   select, input[type=text], input[type=password] { font: inherit; padding: .6rem .75rem; border: 1px solid var(--border);
           border-radius: 10px; background: var(--surface); color: var(--text); min-width: 220px; }
@@ -59,7 +92,7 @@
   form select, form input[type=text], form input[type=password] { width: 100%; }
   form .row { display: flex; gap: .6rem; align-items: center; font-weight: 500; }
   button[type=submit], button[type=button] { font: inherit; padding: .6rem 1.1rem; border-radius: 10px; cursor: pointer;
-          border: 1px solid var(--border); background: var(--surface); }
+          border: 1px solid var(--border); background: var(--surface); color: var(--text); }
   button[type=submit] { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
   button[type=submit]:hover { background: var(--brand-dark); }
 
@@ -69,24 +102,14 @@
   .card .label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: .25rem; }
 
   .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 1.5rem; }
-  .course-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; margin-top: 1rem; }
-  .course-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
-                 cursor: pointer; transition: transform .15s, box-shadow .15s; }
-  .course-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(16,24,40,.12); }
-  .course-card .body { padding: 1rem 1.1rem 1.2rem; }
-  .course-card h3 { margin: 0 0 .25rem; }
-  .course-card p { margin: 0; font-size: .9rem; }
-  .photo { width: 100%; height: 160px; object-fit: cover; display: block; background: linear-gradient(135deg, #bbf7d0, #4ade80); }
-  .photo.empty { display: grid; place-items: center; font-size: 2.5rem; }
   .hero { width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius); box-shadow: var(--shadow); margin: 1rem 0; }
   .panel { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.25rem 1.5rem; margin: 1rem 0; }
   .panel h3 { margin-top: 0; }
   .panel .notes { white-space: pre-wrap; margin: 0; color: var(--text); }
-  .back { border: 0; background: none; color: var(--brand-dark); cursor: pointer; font: inherit; padding: 0; margin-bottom: 1rem; }
-  textarea { font: inherit; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 10px; width: 100%; min-height: 90px; resize: vertical; }
+  textarea { font: inherit; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 10px; width: 100%; min-height: 90px; resize: vertical;
+             background: var(--surface); color: var(--text); }
   textarea:focus { outline: 2px solid rgba(22,163,74,.35); border-color: var(--brand); }
 
-  .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
   button.primary { font: inherit; padding: .6rem 1.1rem; border-radius: 10px; cursor: pointer; border: 0;
                    background: var(--brand); color: #fff; font-weight: 600; white-space: nowrap; }
   button.primary:hover { background: var(--brand-dark); }
@@ -96,6 +119,60 @@
   table.compact th, table.compact td { padding: .4rem .7rem; }
   table.compact input[type=number] { width: 90px; min-width: 0; padding: .4rem .5rem; }
   table.compact select { min-width: 0; padding: .4rem .5rem; }
+
+  .panel .row, .profile .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+
+  .top-bar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .top-bar .bar-label { font-weight: 600; }
+  .top-bar select { min-width: 280px; font-size: 1.05rem; font-weight: 600; box-shadow: var(--shadow); }
+  .thumb { width: 168px; height: 112px; border-radius: 12px; overflow: hidden; flex-shrink: 0; display: grid; place-items: center;
+           background: linear-gradient(135deg, #22c55e, #15803d); color: #fff; font-size: 2.4rem; font-weight: 700; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .logo-lg { width: 112px; height: 112px; border-radius: 28px; display: block; }
+  .profile { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; background: var(--surface);
+             border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.5rem; margin: 1rem 0; }
+  .profile-info { flex: 1; min-width: 240px; }
+  .profile-info h2 { margin: 0 0 .25rem; }
+  .profile-info .row { margin-top: .75rem; }
+  .avatar { width: 112px; height: 112px; border-radius: 50%; overflow: hidden; flex-shrink: 0; display: grid; place-items: center;
+            background: linear-gradient(135deg, #22c55e, #15803d); color: #fff; font-size: 2.4rem; font-weight: 700; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .hc { text-align: center; padding: 1rem 1.5rem; border-radius: var(--radius); background: var(--ok-bg); border: 1px solid var(--ok-border); }
+  .hc-value { font-size: 2.4rem; font-weight: 700; color: var(--brand-dark); letter-spacing: -.02em; }
+  .hc-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .muted { color: var(--muted); font-size: .85rem; }
+  .settings-row { display: grid; grid-template-columns: minmax(300px, 480px) minmax(260px, 1fr); gap: 1.5rem; align-items: start; }
+  .theme-option { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 0;
+                  border-bottom: 1px solid var(--border); }
+  .theme-option:last-child { border-bottom: 0; }
+  .settings-row .panel { margin-top: 0; }
+  button.toggle.on { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  button.toggle.on:disabled { opacity: 1; cursor: default; }
+  @media (max-width: 900px) { .settings-row { grid-template-columns: 1fr; } }
+  .toolbar { display: flex; gap: 1rem; align-items: center; margin-top: 1.5rem; }
+  .report-sheet { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+                  padding: 2rem 2.25rem; margin-top: 1rem; }
+  .report-sheet h1 { margin: 0 0 .25rem; font-size: 1.6rem; letter-spacing: -.02em; }
+  .report-sheet table { box-shadow: none; border: 1px solid var(--border); }
+  .report-sheet .card { box-shadow: none; border: 1px solid var(--border); }
+  .report-sheet .hero { max-height: 220px; box-shadow: none; }
+
+  dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1.5rem; margin: .5rem 0 1rem; }
+  dl.kv dt { color: var(--muted); font-size: .85rem; }
+  dl.kv dd { margin: 0; font-weight: 500; }
+  .bar { height: 10px; border-radius: 6px; background: var(--border); overflow: hidden; margin: .4rem 0 .25rem; }
+  .bar span { display: block; height: 100%; background: var(--brand); }
+
+  @media print {
+    @page { margin: 14mm; }
+    body { display: block; background: #fff; }
+    aside, .no-print { display: none !important; }
+    main { padding: 0; max-width: none; }
+    .report-sheet { box-shadow: none; padding: 0; margin: 0; }
+    table { break-inside: auto; }
+    tr { break-inside: avoid; }
+    h3 { break-after: avoid; }
+  }
 
   @media (max-width: 720px) {
     body { flex-direction: column; }
@@ -107,12 +184,13 @@
 </head>
 <body>
 <aside>
-  <div class="brand"><i>&#9971;</i>Golf Stats</div>
+  <div class="brand"><img class="logo" src="/favicon.svg" alt="">Golf Stats</div>
   <nav id="nav">
     <button data-tab="overview" class="active">Overview</button>
     <button data-tab="rounds">Rounds</button>
     <button data-tab="players">Players</button>
     <button data-tab="courses">Courses</button>
+    <button data-tab="reports">Reports</button>
     <span class="spacer"></span>
     <button data-tab="settings">Settings</button>
   </nav>
@@ -147,11 +225,24 @@ async function send(box, path, method, body) {
   } catch (e) { report(box, false, e.message); return null; }
 }
 
-function pageHeader(title, subtitle, actionLabel, onAction) {
-  const btn = el('button', { type: 'button', className: 'primary', textContent: actionLabel });
-  btn.onclick = onAction;
-  return el('div', { className: 'page-header' },
-    el('div', null, el('h2', { textContent: title }), el('p', { textContent: subtitle })), btn);
+function topBar(label, ...controls) {
+  return el('div', { className: 'top-bar' }, el('span', { className: 'bar-label', textContent: label }), ...controls);
+}
+
+function actionButton(text, onClick) {
+  const btn = el('button', { type: 'button', className: 'primary', textContent: text });
+  btn.onclick = onClick;
+  return btn;
+}
+
+function profileCard(visual, info, badgeNode) {
+  return el('div', { className: 'profile' }, visual,
+    el('div', { className: 'profile-info' }, ...info), ...(badgeNode ? [badgeNode] : []));
+}
+
+function badge(value, label) {
+  return el('div', { className: 'hc' }, el('div', { className: 'hc-value', textContent: value }),
+    el('div', { className: 'hc-label', textContent: label }));
 }
 
 function el(tag, props, ...children) {
@@ -183,59 +274,184 @@ function table(columns, rows, onClick) {
   return el('table', null, thead, tbody);
 }
 
-async function showRounds() {
+async function showRounds(selectId) {
   const rows = await api('rounds');
-  main.replaceChildren(
-    pageHeader('Rounds', 'Select a row to view the scorecard.', 'New round', showAddRound),
+  const rounds = [...new Map(rows.map(r => [r.RoundId, r])).values()];
+  const select = el('select');
+  for (const r of rounds) select.append(el('option', { value: r.RoundId, textContent: `${r.PlayedOn} \u00b7 ${r.CourseName}` }));
+  const detail = el('div');
+
+  async function loadRound() {
+    if (!select.value) {
+      detail.replaceChildren(el('p', { textContent: 'No rounds recorded yet.' }));
+      return;
+    }
+    const id = Number(select.value);
+    const results = rows.filter(r => r.RoundId === id);
+    try {
+      const scores = await api(`rounds/${id}/scorecard`);
+      const first = results[0];
+      const low = results.reduce((a, b) => (b.TotalStrokes < a.TotalStrokes ? b : a));
+      const byPlayer = {};
+      for (const s of scores) (byPlayer[s.PlayerName] ||= []).push(s);
+      const parts = [
+        profileCard(el('div', { className: 'avatar', textContent: initials(first.CourseName) }),
+          [el('h2', { textContent: first.CourseName }),
+           el('div', { className: 'muted', textContent: `${first.PlayedOn} \u00b7 ${results.length} player${results.length === 1 ? '' : 's'} \u00b7 ${first.HolesScored} holes` })],
+          badge(String(low.TotalStrokes), `Low score \u00b7 ${low.PlayerName}`)),
+        el('h3', { textContent: 'Results' }),
+        table([
+          { key: 'PlayerName', label: 'Player' }, { key: 'HolesScored', label: 'Holes' },
+          { key: 'TotalPar', label: 'Par' }, { key: 'TotalStrokes', label: 'Strokes' },
+          { key: 'TotalToPar', label: 'To par', fmt: toPar },
+        ], results)];
+      for (const [name, holes] of Object.entries(byPlayer)) {
+        parts.push(el('h3', { textContent: `${name} scorecard` }), table([
+          { key: 'HoleNumber', label: 'Hole' }, { key: 'Metres', label: 'Metres' },
+          { key: 'Par', label: 'Par' }, { key: 'StrokeIndex', label: 'Index' },
+          { key: 'Strokes', label: 'Strokes' }, { key: 'ToPar', label: 'To par', fmt: toPar },
+        ], holes));
+      }
+      detail.replaceChildren(...parts);
+    } catch (e) {
+      detail.replaceChildren(el('div', { className: 'err', textContent: e.message }));
+    }
+  }
+  select.onchange = loadRound;
+
+  main.replaceChildren(topBar('Round', select, actionButton('New round', showAddRound)), detail,
+    el('h3', { textContent: 'All rounds' }),
     table([
       { key: 'PlayedOn', label: 'Date' }, { key: 'CourseName', label: 'Course' },
       { key: 'PlayerName', label: 'Player' }, { key: 'HolesScored', label: 'Holes' },
       { key: 'TotalPar', label: 'Par' }, { key: 'TotalStrokes', label: 'Strokes' },
       { key: 'TotalToPar', label: 'To par', fmt: toPar },
-    ], rows, r => showScorecard(r.RoundId)),
-    el('div', { id: 'detail' }));
+    ], rows, r => { select.value = r.RoundId; loadRound(); select.scrollIntoView({ behavior: 'smooth' }); }));
+  if (rounds.length) select.value = selectId || rounds[0].RoundId;
+  loadRound();
 }
 
-async function showScorecard(roundId) {
-  const rows = await api(`rounds/${roundId}/scorecard`);
-  const detail = document.getElementById('detail');
-  detail.replaceChildren(el('h2', { textContent: 'Scorecard' }));
-  const byPlayer = {};
-  for (const r of rows) (byPlayer[r.PlayerName] ||= []).push(r);
-  for (const [name, holes] of Object.entries(byPlayer)) {
-    detail.append(el('h3', { textContent: name }), table([
-      { key: 'HoleNumber', label: 'Hole' }, { key: 'Metres', label: 'Metres' },
-      { key: 'Par', label: 'Par' }, { key: 'StrokeIndex', label: 'Index' },
-      { key: 'Strokes', label: 'Strokes' }, { key: 'ToPar', label: 'To par', fmt: toPar },
-    ], holes));
+function initials(name) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+}
+
+function playerProfile(id, name, hasPhoto, hc) {
+  const avatar = el('div', { className: 'avatar' });
+  const renderPhoto = has => avatar.replaceChildren(has
+    ? el('img', { src: `/api/players/${id}/photo?t=${Date.now()}`, alt: name })
+    : el('span', { textContent: initials(name) }));
+  renderPhoto(hasPhoto);
+
+  const status = el('div');
+  const file = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', hidden: true });
+  const upload = el('button', { type: 'button', textContent: 'Upload photo' });
+  const remove = el('button', { type: 'button', textContent: 'Remove photo' });
+  upload.onclick = () => file.click();
+  file.onchange = async () => {
+    const f = file.files[0];
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) { report(status, false, 'Photo must be 2 MB or smaller.'); file.value = ''; return; }
+    try {
+      const res = await fetch(`/api/players/${id}/photo`, { method: 'PUT', headers: { 'Content-Type': f.type }, body: f });
+      if (!res.ok) report(status, false, (await res.json()).error);
+      else { renderPhoto(true); report(status, true, 'Photo saved.'); }
+    } catch (e) { report(status, false, e.message); }
+    file.value = '';
+  };
+  remove.onclick = async () => {
+    await fetch(`/api/players/${id}/photo`, { method: 'DELETE' });
+    renderPhoto(false);
+    report(status, true, 'Photo removed.');
+  };
+
+  let note;
+  if (hc.index !== null) note = `Lowest index in the last 12 months: ${hc.lowIndex.toFixed(1)}`;
+  else if (hc.needed > 0) note = `${hc.needed} more complete score${hc.needed === 1 ? '' : 's'} needed for a Handicap Index.`;
+  else note = 'Not enough scores yet.';
+  if (hc.index === null && hc.pendingNineHole) note += ' One 9-hole round is waiting to be paired with another.';
+
+  return profileCard(avatar,
+    [el('h2', { textContent: name }), el('div', { className: 'muted', textContent: note }),
+      el('div', { className: 'row' }, upload, remove, file), status],
+    badge(hc.index === null ? 'N/A' : hc.index.toFixed(1), 'Handicap Index'));
+}
+
+function handicapPanel(hc) {
+  const parts = [el('h3', { textContent: 'Handicap (Golf Australia / World Handicap System)' }),
+    el('p', { textContent: 'Differential = 113 \u00f7 slope \u00d7 (adjusted gross \u2212 course rating). The Handicap Index averages the lowest differentials from the last 20 scores (marked in the Counted column).' })];
+  if (hc.skipped.length) {
+    parts.push(el('div', { className: 'err', textContent:
+      `${hc.skipped.length} round${hc.skipped.length === 1 ? ' was' : 's were'} ignored because the course has no rating and slope. Add them on the Courses page.` }));
   }
-  detail.scrollIntoView({ behavior: 'smooth' });
+  if (hc.scores.length) {
+    parts.push(table([
+      { key: 'PlayedOn', label: 'Date' }, { key: 'CourseName', label: 'Course' }, { key: 'Holes', label: 'Holes' },
+      { key: 'AdjustedGross', label: 'Adjusted gross' },
+      { key: 'Differential', label: 'Differential', fmt: v => document.createTextNode(v.toFixed(1)) },
+      { key: 'Used', label: 'Counted', fmt: v => document.createTextNode(v ? '\u2713' : '') },
+    ], hc.scores));
+    if (hc.index !== null) {
+      const adj = hc.adjustment ? ` ${hc.adjustment > 0 ? '+' : '\u2212'} ${Math.abs(hc.adjustment).toFixed(1)}` : '';
+      parts.push(el('p', { className: 'muted', textContent: `Average of the ${hc.counted} lowest of ${hc.scores.length} score${hc.scores.length === 1 ? '' : 's'}${adj} = ${hc.index.toFixed(1)}.` }));
+    }
+  } else {
+    parts.push(el('p', { textContent: 'No scores with a course rating and slope yet.' }));
+  }
+  if (hc.courses.length) {
+    parts.push(el('h3', { textContent: 'Course handicaps' }), table([
+      { key: 'CourseName', label: 'Course' }, { key: 'NumHoles', label: 'Holes' },
+      { key: 'CourseRating', label: 'Rating' }, { key: 'SlopeRating', label: 'Slope' },
+      { key: 'CourseHandicap', label: 'Course handicap', fmt: dash },
+    ], hc.courses));
+  }
+  return el('div', { className: 'panel' }, ...parts);
 }
 
 async function showPlayers(selectId) {
   const players = await api('players');
   const select = el('select');
-  select.append(el('option', { value: '', textContent: 'Select a player...' }));
   for (const p of players) select.append(el('option', { value: p.PlayerId, textContent: p.PlayerName }));
   const detail = el('div');
-  select.onchange = async () => {
-    if (!select.value) return detail.replaceChildren();
+
+  const nameInput = el('input', { type: 'text', maxLength: 100, required: true });
+  const addStatus = el('div');
+  const addForm = el('form', { hidden: true });
+  addForm.append(el('label', { textContent: 'Player name' }, nameInput),
+    el('div', { className: 'row' }, el('button', { type: 'submit', textContent: 'Add player' })), addStatus);
+  addForm.onsubmit = async e => {
+    e.preventDefault();
+    const data = await send(addStatus, 'players', 'POST', { name: nameInput.value });
+    if (data) showPlayers(data.PlayerId);
+  };
+  const addBtn = el('button', { type: 'button', className: 'primary', textContent: 'Add player' });
+  addBtn.onclick = () => {
+    addForm.hidden = !addForm.hidden;
+    if (!addForm.hidden) nameInput.focus();
+  };
+  const bar = topBar('Player', select, addBtn);
+
+  async function loadPlayer() {
+    if (!select.value) {
+      detail.replaceChildren(el('p', { textContent: 'Add a player to get started.' }));
+      return;
+    }
+    const id = select.value;
+    const player = players.find(p => String(p.PlayerId) === id);
     try {
-      const [stats, history] = await Promise.all([
-        api(`players/${select.value}/stats`), api(`players/${select.value}/history`)]);
+      const [stats, history, hc] = await Promise.all([
+        api(`players/${id}/stats`), api(`players/${id}/history`), api(`players/${id}/handicap`)]);
       const rounds = history.length;
       const avgToPar = rounds ? history.reduce((s, r) => s + r.TotalToPar, 0) / rounds : 0;
       const best = rounds ? Math.min(...history.map(r => r.TotalToPar)) : 0;
-      const cards = el('div', { className: 'cards' });
-      const card = (label, value) => cards.append(el('div', { className: 'card' },
-        el('div', { className: 'value' }, value), el('div', { className: 'label', textContent: label })));
-      card('Rounds played', String(rounds));
-      card('Holes played', String(history.reduce((s, r) => s + r.HolesScored, 0)));
-      card('Best round (to par)', toPar(best));
-      card('Average (to par)', toPar(Math.round(avgToPar * 10) / 10));
-      card('Last played', rounds ? history[0].PlayedOn : '-');
+      const cards = statCards([
+        ['Rounds played', String(rounds)],
+        ['Holes played', String(history.reduce((s, r) => s + r.HolesScored, 0))],
+        ['Best round (to par)', toPar(best)],
+        ['Average (to par)', toPar(Math.round(avgToPar * 10) / 10)],
+        ['Last played', rounds ? history[0].PlayedOn : '-']]);
       detail.replaceChildren(
-        el('h3', { textContent: `${select.selectedOptions[0].textContent} - overview` }), cards,
+        playerProfile(id, player.PlayerName, player.HasPhoto, hc), cards,
+        handicapPanel(hc),
         el('h3', { textContent: 'Course stats' }),
         table([
           { key: 'CourseName', label: 'Course' }, { key: 'RoundsPlayed', label: 'Complete rounds' },
@@ -251,56 +467,46 @@ async function showPlayers(selectId) {
     } catch (e) {
       detail.replaceChildren(el('div', { className: 'err', textContent: e.message }));
     }
-  };
-  const nameInput = el('input', { type: 'text', maxLength: 100, required: true });
-  const addStatus = el('div');
-  const addForm = el('form', { hidden: true });
-  addForm.append(el('label', { textContent: 'Player name' }, nameInput),
-    el('div', { className: 'row' }, el('button', { type: 'submit', textContent: 'Add player' })), addStatus);
-  addForm.onsubmit = async e => {
-    e.preventDefault();
-    const data = await send(addStatus, 'players', 'POST', { name: nameInput.value });
-    if (data) showPlayers(data.PlayerId);
-  };
-  const header = pageHeader('Players', 'View a player\u2019s stats and history.', 'Add player', () => {
-    addForm.hidden = !addForm.hidden;
-    if (!addForm.hidden) nameInput.focus();
-  });
-  main.replaceChildren(header, addForm, select, detail);
-  if (players.length) { select.value = selectId || players[0].PlayerId; select.onchange(); }
-}
-
-async function showCourses() {
-  const courses = await api('courses');
-  const grid = el('div', { className: 'course-grid' });
-  for (const c of courses) {
-    const thumb = c.HasPhoto
-      ? el('img', { className: 'photo', src: `/api/courses/${c.CourseId}/photo`, alt: '' })
-      : el('div', { className: 'photo empty', textContent: '\u26F3' });
-    const card = el('div', { className: 'course-card' }, thumb, el('div', { className: 'body' },
-      el('h3', { textContent: c.CourseName }),
-      el('p', { textContent: `${c.NumHoles} holes` }),
-      el('p', { textContent: c.Description || 'No description yet.' })));
-    card.onclick = () => showCourse(c.CourseId);
-    grid.append(card);
   }
-  main.replaceChildren(
-    pageHeader('Courses', 'Select a course to see its holes, notes and photo.', 'Add course', showAddCourse), grid);
+  select.onchange = loadPlayer;
+
+  main.replaceChildren(bar, addForm, detail);
+  if (players.length) select.value = selectId || players[0].PlayerId;
+  loadPlayer();
 }
 
-async function showCourse(id) {
-  const [c, holes] = await Promise.all([api(`courses/${id}`), api(`courses/${id}/holes`)]);
-  const back = el('button', { className: 'back', textContent: '\u2190 All courses' });
-  back.onclick = () => show('courses');
+async function showCourses(selectId) {
+  const courses = await api('courses');
+  const select = el('select');
+  for (const c of courses) select.append(el('option', { value: c.CourseId, textContent: c.CourseName }));
+  const detail = el('div');
+  const load = async () => {
+    if (!select.value) {
+      detail.replaceChildren(el('p', { textContent: 'Add a course to get started.' }));
+      return;
+    }
+    try { await renderCourse(select.value, detail); }
+    catch (e) { detail.replaceChildren(el('div', { className: 'err', textContent: e.message })); }
+  };
+  select.onchange = load;
+  main.replaceChildren(topBar('Course', select, actionButton('Add course', showAddCourse)), detail);
+  if (courses.length) select.value = selectId || courses[0].CourseId;
+  load();
+}
 
-  const photoView = el('div');
+async function renderCourse(id, container) {
+  const [c, holes] = await Promise.all([api(`courses/${id}`), api(`courses/${id}/holes`)]);
+
+  const photoView = el('div', { className: 'thumb' });
   const renderPhoto = has => photoView.replaceChildren(has
-    ? el('img', { className: 'hero', src: `/api/courses/${id}/photo?t=${Date.now()}`, alt: c.CourseName })
-    : el('p', { textContent: 'No photo uploaded.' }));
+    ? el('img', { src: `/api/courses/${id}/photo?t=${Date.now()}`, alt: c.CourseName })
+    : el('span', { textContent: initials(c.CourseName) }));
   renderPhoto(c.HasPhoto);
 
   const description = el('textarea', { rows: 2, maxLength: 500, value: c.Description || '' });
   const notes = el('textarea', { rows: 5, value: c.Notes || '' });
+  const courseRating = el('input', { type: 'number', step: '0.1', min: 18, max: 90, value: c.CourseRating ?? '' });
+  const slopeRating = el('input', { type: 'number', min: 55, max: 155, value: c.SlopeRating ?? '' });
   const file = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp' });
   const status = el('div');
   const report = (ok, msg) => status.replaceChildren(el('div', { className: ok ? 'ok' : 'err', textContent: msg }));
@@ -309,6 +515,8 @@ async function showCourse(id) {
   form.append(
     el('label', { textContent: 'Description' }, description),
     el('label', { textContent: 'Notes' }, notes),
+    el('label', { textContent: 'Course rating (for the holes on the card)' }, courseRating),
+    el('label', { textContent: 'Slope rating' }, slopeRating),
     el('label', { textContent: 'Photo (JPEG, PNG or WebP, max 2 MB)' }, file));
   const save = el('button', { type: 'submit', textContent: 'Save changes' });
   const remove = el('button', { type: 'button', textContent: 'Remove photo' });
@@ -317,7 +525,9 @@ async function showCourse(id) {
   form.onsubmit = async e => {
     e.preventDefault();
     try {
-      const res = await sendJson(`courses/${id}`, 'PUT', { description: description.value, notes: notes.value });
+      const res = await sendJson(`courses/${id}`, 'PUT', {
+        description: description.value, notes: notes.value,
+        courseRating: courseRating.value, slopeRating: slopeRating.value });
       if (!res.ok) return report(false, res.data.error);
       const f = file.files[0];
       if (f) {
@@ -334,8 +544,13 @@ async function showCourse(id) {
   };
 
   const text = (t, empty) => el('p', { className: 'notes', textContent: t || empty });
-  main.replaceChildren(back, el('h2', { textContent: c.CourseName }),
-    el('p', { textContent: `${c.NumHoles} holes` }), photoView,
+  const totalPar = holes.reduce((s, h) => s + h.Par, 0);
+  const totalMetres = holes.reduce((s, h) => s + h.Metres, 0);
+  const facts = [`${c.NumHoles} holes`, `${totalMetres} m`,
+    c.CourseRating ? `rating ${c.CourseRating} \u00b7 slope ${c.SlopeRating}` : 'no rating or slope yet'];
+  container.replaceChildren(
+    profileCard(photoView, [el('h2', { textContent: c.CourseName }), el('div', { className: 'muted', textContent: facts.join(' \u00b7 ') })],
+      badge(String(totalPar), 'Par')),
     el('div', { className: 'panel' }, el('h3', { textContent: 'Description' }), text(c.Description, 'No description yet.')),
     el('div', { className: 'panel' }, el('h3', { textContent: 'Notes' }), text(c.Notes, 'No notes yet.')),
     el('h3', { textContent: 'Holes' }),
@@ -355,12 +570,16 @@ async function showOverview() {
       el('div', { className: 'label', textContent: label })));
   }
   main.replaceChildren(
-    el('h2', { textContent: 'Overview' }),
-    el('p', { textContent: 'A summary of everything in the database.' }), cards,
+    topBar('Overview', actionButton('Refresh', showOverview)),
+    profileCard(el('img', { className: 'logo-lg', src: '/favicon.svg', alt: '' }),
+      [el('h2', { textContent: 'Golf Stats' }),
+       el('div', { className: 'muted', textContent: 'A summary of your courses, players and rounds.' })],
+      badge(String(o.totals.Rounds), 'Rounds played')), cards,
     el('div', { className: 'grid2' },
       el('div', null, el('h3', { textContent: 'Leaderboard' }),
         table([
           { key: 'PlayerName', label: 'Player' }, { key: 'Rounds', label: 'Rounds' },
+          { key: 'HandicapIndex', label: 'Handicap', fmt: v => document.createTextNode(v == null ? '-' : v.toFixed(1)) },
           { key: 'AvgToParPerHole', label: 'Avg to par / hole', fmt: toPar },
         ], o.leaderboard)),
       el('div', null, el('h3', { textContent: 'Most played courses' }),
@@ -415,13 +634,184 @@ async function showSettings() {
     e.preventDefault();
     const { ok, data } = await sendJson('config', 'PUT', values());
     report(ok, ok ? 'Settings saved.' : data.error);
+    if (ok) loadInfo();
   };
 
   form.append(label('Server', server), label('Database', database), label('ODBC driver', driver),
     label('Authentication', auth), sqlFields,
     el('label', { className: 'row' }, trust, 'Trust server certificate'),
     el('div', { className: 'row' }, save, test), status);
-  main.replaceChildren(el('h2', { textContent: 'Database connection' }), el('p'), form);
+  const infoBox = el('div');
+  const fmtMB = v => v >= 1024 ? (v / 1024).toFixed(2) + ' GB' : v.toFixed(2) + ' MB';
+  const kv = rows => el('dl', { className: 'kv' },
+    ...rows.flatMap(([k, v]) => [el('dt', { textContent: k }), el('dd', { textContent: String(v) })]));
+  const mbCell = v => document.createTextNode(fmtMB(v));
+
+  async function loadInfo() {
+    infoBox.replaceChildren(el('p', { textContent: 'Loading...' }));
+    try {
+      const i = await api('database/info');
+      const cards = el('div', { className: 'cards' });
+      for (const [label, value] of [['Data size', fmtMB(i.dataMB)], ['Log size', fmtMB(i.logMB)],
+          ['Photos stored', `${i.photos.Count} (${fmtMB(i.photos.SizeMB)})`]]) {
+        cards.append(el('div', { className: 'card' }, el('div', { className: 'value', textContent: value }),
+          el('div', { className: 'label', textContent: label })));
+      }
+      const parts = [kv([
+        ['Server', i.server.ServerName], ['Edition', i.server.Edition], ['Version', i.server.Version],
+        ['Connected as', i.server.LoginName], ['Database', i.database.Name], ['State', i.database.State],
+        ['Created', new Date(i.database.Created).toLocaleString()],
+        ['Compatibility level', i.database.CompatibilityLevel], ['Recovery model', i.database.RecoveryModel],
+        ['Collation', i.database.Collation]]), cards];
+      if (i.limitMB) {
+        const pct = i.dataMB / i.limitMB * 100;
+        parts.push(el('div', null,
+          el('div', { className: 'bar' }, el('span', { style: `width:${Math.max(pct, 0.5)}%` })),
+          el('div', { className: 'muted', textContent: `${fmtMB(i.dataMB)} of the ${fmtMB(i.limitMB)} Express data limit used (${pct.toFixed(2)}%)` })));
+      }
+      parts.push(el('h3', { textContent: 'Files' }), table([
+        { key: 'Type', label: 'Type' }, { key: 'Name', label: 'Name' }, { key: 'SizeMB', label: 'Size', fmt: mbCell },
+      ], i.files), el('h3', { textContent: 'Tables' }), table([
+        { key: 'Name', label: 'Table' }, { key: 'Rows', label: 'Rows' }, { key: 'SizeMB', label: 'Size', fmt: mbCell },
+      ], i.tables));
+      infoBox.replaceChildren(...parts);
+    } catch (e) {
+      infoBox.replaceChildren(el('div', { className: 'err', textContent: e.message }));
+    }
+  }
+
+  const refresh = actionButton('Refresh info', loadInfo);
+  main.replaceChildren(topBar('Settings', refresh),
+    el('div', { className: 'settings-row' },
+      el('div', null, el('h3', { textContent: 'Database connection' }), form),
+      el('div', null, el('h3', { textContent: 'Appearance' }), themePanel())),
+    el('h3', { textContent: 'Database information' }), infoBox);
+  loadInfo();
+}
+
+function themePanel() {
+  const options = [
+    ['dark', 'Dark', 'Dark backgrounds, easier on the eyes at night.'],
+    ['light', 'Light', 'Light backgrounds.'],
+    ['system', 'System', 'Follow the light or dark setting of your device.'],
+  ];
+  const panel = el('div', { className: 'panel' });
+  const render = () => {
+    const current = getTheme();
+    panel.replaceChildren(...options.map(([value, label, hint]) => {
+      const on = current === value;
+      const btn = el('button', { type: 'button', className: on ? 'toggle on' : 'toggle',
+        textContent: on ? 'Enabled' : 'Enable', disabled: on });
+      btn.onclick = () => { setTheme(value); render(); };
+      return el('div', { className: 'theme-option' },
+        el('div', null, el('strong', { textContent: label }), el('div', { className: 'muted', textContent: hint })), btn);
+    }));
+  };
+  render();
+  return panel;
+}
+
+function statCards(pairs) {
+  const cards = el('div', { className: 'cards' });
+  for (const [label, value] of pairs) {
+    cards.append(el('div', { className: 'card' }, el('div', { className: 'value' }, value),
+      el('div', { className: 'label', textContent: label })));
+  }
+  return cards;
+}
+
+function reportSheet(title, ...content) {
+  const print = el('button', { type: 'button', className: 'primary', textContent: 'Print / Save as PDF' });
+  print.onclick = () => {
+    const old = document.title;
+    document.title = title.replace(/[\\/:*?"<>|]/g, '-');
+    window.addEventListener('afterprint', () => { document.title = old; }, { once: true });
+    window.print();
+  };
+  return el('div', null,
+    el('div', { className: 'toolbar no-print' }, print,
+      el('span', { className: 'muted', textContent: 'In the print dialog, choose "Save as PDF" as the destination.' })),
+    el('article', { className: 'report-sheet' },
+      el('h1', { textContent: title }),
+      el('div', { className: 'muted', textContent: `Golf Stats report \u00b7 generated ${new Date().toLocaleString()}` }),
+      ...content));
+}
+
+const dash = v => document.createTextNode(v ?? '-');
+
+async function buildPlayerReport(id) {
+  const [r, hc] = await Promise.all([api(`reports/player/${id}`), api(`players/${id}/handicap`)]);
+  const holes = r.rounds.reduce((s, x) => s + x.HolesScored, 0);
+  const toParTotal = r.rounds.reduce((s, x) => s + x.TotalToPar, 0);
+  const best = r.rounds.length ? Math.min(...r.rounds.map(x => x.TotalToPar)) : 0;
+  const perHole = holes ? Math.round(toParTotal / holes * 100) / 100 : 0;
+  return reportSheet(`Player history - ${r.player.PlayerName}`,
+    statCards([['Rounds played', String(r.rounds.length)], ['Holes played', String(holes)],
+      ['Best round (to par)', toPar(best)], ['Avg to par / hole', toPar(perHole)],
+      ['Handicap Index', hc.index === null ? 'N/A' : hc.index.toFixed(1)]]),
+    el('h3', { textContent: 'Course stats (complete rounds)' }),
+    table([
+      { key: 'CourseName', label: 'Course' }, { key: 'RoundsPlayed', label: 'Rounds' },
+      { key: 'BestStrokes', label: 'Best' }, { key: 'AverageStrokes', label: 'Average' },
+      { key: 'LastPlayed', label: 'Last played' },
+    ], r.stats),
+    el('h3', { textContent: 'Round history' }),
+    table([
+      { key: 'PlayedOn', label: 'Date' }, { key: 'CourseName', label: 'Course' },
+      { key: 'HolesScored', label: 'Holes' }, { key: 'TotalPar', label: 'Par' },
+      { key: 'TotalStrokes', label: 'Strokes' }, { key: 'TotalToPar', label: 'To par', fmt: toPar },
+    ], r.rounds));
+}
+
+async function buildCourseReport(id) {
+  const r = await api(`reports/course/${id}`);
+  const c = r.course;
+  const parts = [];
+  if (c.HasPhoto) parts.push(el('img', { className: 'hero', src: `/api/courses/${id}/photo`, alt: c.CourseName }));
+  parts.push(statCards([['Holes', String(c.NumHoles)], ['Par', String(c.TotalPar)],
+    ['Total metres', String(c.TotalMetres)], ['Rounds recorded', String(new Set(r.rounds.map(x => x.RoundId)).size)],
+    ['Rating / slope', c.CourseRating ? `${c.CourseRating} / ${c.SlopeRating}` : 'N/A']]));
+  if (c.Description) parts.push(el('p', { textContent: c.Description }));
+  if (c.Notes) parts.push(el('h3', { textContent: 'Notes' }), el('p', { className: 'notes', style: 'white-space:pre-wrap', textContent: c.Notes }));
+  parts.push(el('h3', { textContent: 'Holes' }), table([
+    { key: 'HoleNumber', label: 'Hole' }, { key: 'Metres', label: 'Metres' }, { key: 'Par', label: 'Par' },
+    { key: 'StrokeIndex', label: 'Index' }, { key: 'TimesPlayed', label: 'Times played' },
+    { key: 'AverageStrokes', label: 'Avg strokes', fmt: dash }, { key: 'BestStrokes', label: 'Best', fmt: dash },
+  ], r.holes), el('h3', { textContent: 'Player results (complete rounds)' }), table([
+    { key: 'PlayerName', label: 'Player' }, { key: 'RoundsPlayed', label: 'Rounds' },
+    { key: 'BestStrokes', label: 'Best' }, { key: 'AverageStrokes', label: 'Average' },
+    { key: 'LastPlayed', label: 'Last played' },
+  ], r.players), el('h3', { textContent: 'Round history' }), table([
+    { key: 'PlayedOn', label: 'Date' }, { key: 'PlayerName', label: 'Player' },
+    { key: 'HolesScored', label: 'Holes' }, { key: 'TotalPar', label: 'Par' },
+    { key: 'TotalStrokes', label: 'Strokes' }, { key: 'TotalToPar', label: 'To par', fmt: toPar },
+  ], r.rounds));
+  return reportSheet(`Course history - ${c.CourseName}`, ...parts);
+}
+
+async function showReports() {
+  const [players, courses] = await Promise.all([api('players'), api('courses')]);
+  const output = el('div', null, el('div', { className: 'panel no-print' },
+    el('p', { textContent: 'Choose a report and select Generate, then print it or save it as a PDF.' })));
+  const kinds = {
+    player: { label: 'Player history', items: players, id: 'PlayerId', name: 'PlayerName', build: buildPlayerReport },
+    course: { label: 'Course history', items: courses, id: 'CourseId', name: 'CourseName', build: buildCourseReport },
+  };
+  const kind = el('select');
+  for (const [key, k] of Object.entries(kinds)) kind.append(el('option', { value: key, textContent: k.label }));
+  const subject = el('select');
+  const generate = actionButton('Generate report', async () => {
+    try { output.replaceChildren(await kinds[kind.value].build(subject.value)); }
+    catch (e) { output.replaceChildren(el('div', { className: 'err', textContent: e.message })); }
+  });
+  const fill = () => {
+    const k = kinds[kind.value];
+    subject.replaceChildren(...k.items.map(it => el('option', { value: it[k.id], textContent: it[k.name] })));
+    generate.disabled = !k.items.length;
+  };
+  kind.onchange = fill;
+  fill();
+  main.replaceChildren(el('div', { className: 'no-print' }, topBar('Report', kind, subject, generate)), output);
 }
 
 function showAddCourse() {
@@ -430,6 +820,8 @@ function showAddCourse() {
   numHoles.append(el('option', { value: '9', textContent: '9 holes' }), el('option', { value: '18', textContent: '18 holes' }));
   const description = el('textarea', { rows: 2, maxLength: 500 });
   const notes = el('textarea', { rows: 4 });
+  const courseRating = el('input', { type: 'number', step: '0.1', min: 18, max: 90 });
+  const slopeRating = el('input', { type: 'number', min: 55, max: 155 });
   const file = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp' });
   const holesBox = el('div');
   const status = el('div');
@@ -456,14 +848,16 @@ function showAddCourse() {
   numHoles.onchange = buildHoles;
   buildHoles();
 
-  const back = el('button', { className: 'back', type: 'button', textContent: '\u2190 All courses' });
-  back.onclick = () => show('courses');
+  const cancel = el('button', { type: 'button', textContent: 'Cancel' });
+  cancel.onclick = () => show('courses');
   const form = el('form', { className: 'wide' });
   form.append(
     el('label', { textContent: 'Course name' }, name),
     el('label', { textContent: 'Number of holes' }, numHoles),
     el('label', { textContent: 'Description' }, description),
     el('label', { textContent: 'Notes' }, notes),
+    el('label', { textContent: 'Course rating (optional, for the holes on the card; needed for handicaps)' }, courseRating),
+    el('label', { textContent: 'Slope rating (optional, 55 to 155)' }, slopeRating),
     el('label', { textContent: 'Photo (optional, JPEG, PNG or WebP, max 2 MB)' }, file),
     el('div', null, el('strong', { textContent: 'Holes' }), holesBox),
     el('div', { className: 'row' }, el('button', { type: 'submit', textContent: 'Create course' })), status);
@@ -473,6 +867,7 @@ function showAddCourse() {
     const data = await send(status, 'courses', 'POST', {
       name: name.value, numHoles: Number(numHoles.value),
       description: description.value, notes: notes.value,
+      courseRating: courseRating.value, slopeRating: slopeRating.value,
       holes: rows.map((r, i) => ({
         hole: i + 1, metres: Number(r.metres.value), par: Number(r.par.value), strokeIndex: Number(r.idx.value) })),
     });
@@ -482,17 +877,17 @@ function showAddCourse() {
       const up = await fetch(`/api/courses/${data.CourseId}/photo`, { method: 'PUT', headers: { 'Content-Type': f.type }, body: f });
       if (!up.ok) alert('Course created, but the photo was not saved: ' + ((await up.json().catch(() => ({}))).error || up.status));
     }
-    showCourse(data.CourseId);
+    showCourses(data.CourseId);
   };
-  main.replaceChildren(back, el('h2', { textContent: 'Add course' }), form);
+  main.replaceChildren(topBar('Add course', cancel), form);
 }
 
 async function showAddRound() {
   const [courses, players] = await Promise.all([api('courses'), api('players')]);
-  const back = el('button', { className: 'back', type: 'button', textContent: '\u2190 All rounds' });
-  back.onclick = () => show('rounds');
+  const cancel = el('button', { type: 'button', textContent: 'Cancel' });
+  cancel.onclick = () => show('rounds');
   if (!courses.length || !players.length) {
-    main.replaceChildren(back, el('h2', { textContent: 'New round' }),
+    main.replaceChildren(topBar('New round', cancel),
       el('p', { textContent: 'Add at least one course and one player first.' }));
     return;
   }
@@ -581,20 +976,28 @@ async function showAddRound() {
       })),
     });
     if (!data) return;
-    await showRounds();
-    showScorecard(data.RoundId);
+    showRounds(data.RoundId);
   };
 
-  main.replaceChildren(back, el('h2', { textContent: 'New round' }), form);
+  main.replaceChildren(topBar('New round', cancel), form);
   await loadHoles();
 }
 
-const tabs = { overview: showOverview, rounds: showRounds, players: showPlayers, courses: showCourses, settings: showSettings };
+const tabs = { overview: showOverview, rounds: showRounds, players: showPlayers, courses: showCourses, reports: showReports, settings: showSettings };
 
-async function show(tab) {
+// Pages render one at a time, and a page skipped by a later click never overwrites the one the user chose.
+let navToken = 0;
+let navChain = Promise.resolve();
+
+function show(tab) {
+  const token = ++navToken;
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  try { await tabs[tab](); }
-  catch (e) { main.replaceChildren(el('div', { className: 'err', textContent: e.message })); }
+  navChain = navChain.then(async () => {
+    if (token !== navToken) return;
+    try { await tabs[tab](); }
+    catch (e) { main.replaceChildren(el('div', { className: 'err', textContent: e.message })); }
+  });
+  return navChain;
 }
 
 document.getElementById('nav').onclick = e => { if (e.target.dataset.tab) show(e.target.dataset.tab); };

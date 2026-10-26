@@ -21,7 +21,8 @@ Settings are saved to `config.json` next to `app.py` (git-ignored). A SQL login 
 ## Pages
 
 - **Overview:** totals, leaderboard, most played courses and recent rounds.
-- **Settings:** database connection configuration.
+- **Reports:** printable player history and course history reports; use **Print / Save as PDF**.
+- **Settings:** database connection configuration, an **Appearance** panel (Dark, Light or System theme) and a database information panel (versions, sizes, row counts).
 - **Rounds:** all rounds with totals; select a row for the hole-by-hole scorecard. **New round** records a round: pick a course and date, tick the players (each can have a marker) and enter every hole's score.
-- **Players:** pick a player to see course stats and round history. **Add player** creates a new player.
-- **Courses:** course cards with photo and description; **Add course** creates a 9 or 18 hole course with metres, par and stroke index for each hole. Open a course for hole details and notes, and to edit the description, notes and photo (JPEG, PNG or WebP, max 2 MB). Re-run the database scripts first so the new course columns exist.
+- **Players:** a selector and **Add player** button at the top, then the player's photo, Handicap Index (World Handicap System), the scores behind it, course stats and round history. **Add player** creates a new player.
+- **Courses:** a course selector and **Add course** at the top, then the course photo, rating and par, description, notes and holes. **Add course** creates a 9 or 18 hole course with metres, par and stroke index for each hole. The page also edits the description, notes, rating, slope and photo (JPEG, PNG or WebP, max 2 MB). Re-run the database scripts first so the new course columns exist.

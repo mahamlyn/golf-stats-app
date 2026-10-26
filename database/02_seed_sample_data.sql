@@ -1,4 +1,4 @@
--- Sample data: three courses, three players and three rounds with scores.
+-- Sample data: three courses, three players and five rounds with scores.
 -- The Par 3 course uses holes 1-9 from the scorecard photo; its name is a placeholder.
 USE GolfStats;
 GO
@@ -74,6 +74,12 @@ UPDATE dbo.Course SET
 WHERE CourseName = N'Sample Championship 18' AND Description IS NULL;
 GO
 
+-- Sample ratings only; replace them with the real figures printed on the scorecard.
+UPDATE dbo.Course SET CourseRating = 25.6, SlopeRating = 80  WHERE CourseName = N'Sample Par 3 Course'     AND CourseRating IS NULL;
+UPDATE dbo.Course SET CourseRating = 35.4, SlopeRating = 118 WHERE CourseName = N'Sample Parkland 9'      AND CourseRating IS NULL;
+UPDATE dbo.Course SET CourseRating = 73.1, SlopeRating = 130 WHERE CourseName = N'Sample Championship 18' AND CourseRating IS NULL;
+GO
+
 INSERT INTO dbo.Player (PlayerName)
 SELECT v.PlayerName
 FROM (VALUES (N'Alex'), (N'Sam'), (N'Jordan')) AS v(PlayerName)
@@ -125,6 +131,38 @@ BEGIN
         (13,6,5,6),(14,4,5,4),(15,4,3,3),(16,4,5,4),(17,5,4,5),(18,5,6,5)
     ) AS s(HoleNumber, Alex, Sam, Jordan)
     CROSS JOIN (VALUES (@Alex), (@Sam), (@Jordan)) AS p(PlayerId);
+END
+GO
+
+-- Two more rounds so Alex and Sam have enough scores for a Handicap Index.
+IF NOT EXISTS (SELECT 1 FROM dbo.Round WHERE PlayedOn = '2026-10-17')
+BEGIN
+    DECLARE @A INT = (SELECT PlayerId FROM dbo.Player WHERE PlayerName = N'Alex');
+    DECLARE @S INT = (SELECT PlayerId FROM dbo.Player WHERE PlayerName = N'Sam');
+    DECLARE @Course INT = (SELECT CourseId FROM dbo.Course WHERE CourseName = N'Sample Championship 18');
+    DECLARE @R4 INT, @R5 INT;
+
+    INSERT INTO dbo.Round (CourseId, PlayedOn) VALUES (@Course, '2026-10-17');
+    SET @R4 = SCOPE_IDENTITY();
+    INSERT INTO dbo.RoundPlayer (RoundId, PlayerId, MarkerPlayerId) VALUES (@R4, @A, @S), (@R4, @S, @A);
+    INSERT INTO dbo.RoundScore (RoundId, PlayerId, HoleNumber, Strokes)
+    SELECT @R4, p.PlayerId, s.HoleNumber, CASE p.PlayerId WHEN @A THEN s.Alex ELSE s.Sam END
+    FROM (VALUES
+        (1,5,5),(2,4,5),(3,3,4),(4,6,5),(5,4,5),(6,5,5),(7,4,3),(8,4,4),(9,5,6),
+        (10,4,5),(11,3,3),(12,5,4),(13,6,5),(14,4,5),(15,3,4),(16,4,5),(17,5,4),(18,5,6)
+    ) AS s(HoleNumber, Alex, Sam)
+    CROSS JOIN (VALUES (@A), (@S)) AS p(PlayerId);
+
+    INSERT INTO dbo.Round (CourseId, PlayedOn) VALUES (@Course, '2026-10-24');
+    SET @R5 = SCOPE_IDENTITY();
+    INSERT INTO dbo.RoundPlayer (RoundId, PlayerId, MarkerPlayerId) VALUES (@R5, @A, @S), (@R5, @S, @A);
+    INSERT INTO dbo.RoundScore (RoundId, PlayerId, HoleNumber, Strokes)
+    SELECT @R5, p.PlayerId, s.HoleNumber, CASE p.PlayerId WHEN @A THEN s.Alex ELSE s.Sam END
+    FROM (VALUES
+        (1,4,5),(2,4,4),(3,3,4),(4,5,6),(5,4,5),(6,5,4),(7,3,4),(8,5,4),(9,5,5),
+        (10,4,4),(11,4,3),(12,4,5),(13,6,5),(14,4,5),(15,3,3),(16,5,4),(17,4,5),(18,5,5)
+    ) AS s(HoleNumber, Alex, Sam)
+    CROSS JOIN (VALUES (@A), (@S)) AS p(PlayerId);
 END
 GO
 

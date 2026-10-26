@@ -6,7 +6,9 @@ from decimal import Decimal
 from pathlib import Path
 
 import pyodbc
-from flask import Flask, Response, jsonify, request, send_file
+from flask import Flask, Response, jsonify, redirect, request, send_file
+
+import handicap
 
 MAX_PHOTO_BYTES = 2 * 1024 * 1024
 # SVG is excluded on purpose: it can carry scripts.
@@ -190,15 +192,127 @@ def index():
     return send_file(Path(__file__).with_name("index.html"))
 
 
+@app.route("/favicon.svg")
+def favicon():
+    return send_file(Path(__file__).with_name("favicon.svg"), mimetype="image/svg+xml")
+
+
+@app.route("/favicon.ico")
+def favicon_ico():
+    return redirect("/favicon.svg")
+
+
 @app.route("/api/players")
 def players():
-    return jsonify(query("SELECT PlayerId, PlayerName FROM dbo.Player ORDER BY PlayerName"))
+    return jsonify(query(
+        "SELECT PlayerId, PlayerName, CASE WHEN Photo IS NULL THEN 0 ELSE 1 END AS HasPhoto "
+        "FROM dbo.Player ORDER BY PlayerName"))
+
+
+def load_rounds(player_id=None):
+    """Complete rounds per player, built from vRoundScorecard and the course ratings."""
+    sql = ("SELECT s.PlayerId, s.RoundId, s.PlayedOn, s.CourseName, c.NumHoles, c.CourseRating, c.SlopeRating, "
+           "s.Par, s.StrokeIndex, s.Strokes FROM dbo.vRoundScorecard s "
+           "JOIN dbo.Course c ON c.CourseId = s.CourseId")
+    params = ()
+    if player_id is not None:
+        sql += " WHERE s.PlayerId = ?"
+        params = (player_id,)
+    rows = query(sql + " ORDER BY s.PlayerId, s.RoundId, s.HoleNumber", params)
+
+    grouped = {}
+    for r in rows:
+        rounds_for_player = grouped.setdefault(r["PlayerId"], {})
+        current = rounds_for_player.get(r["RoundId"])
+        if current is None:
+            current = rounds_for_player[r["RoundId"]] = handicap.Round(
+                r["RoundId"], date.fromisoformat(r["PlayedOn"][:10]), r["CourseName"], r["NumHoles"],
+                r["CourseRating"], r["SlopeRating"])
+        current.holes.append(handicap.Hole(r["Par"], r["StrokeIndex"], r["Strokes"]))
+    return {pid: [x for x in by_round.values() if len(x.holes) == x.num_holes]
+            for pid, by_round in grouped.items()}
+
+
+@app.route("/api/handicaps")
+def handicaps():
+    return jsonify({str(pid): handicap.calculate(rounds)["index"] for pid, rounds in load_rounds().items()})
+
+
+@app.route("/api/players/<int:player_id>/handicap")
+def player_handicap(player_id):
+    result = handicap.calculate(load_rounds(player_id).get(player_id, []))
+    rated = query(
+        "SELECT c.CourseName, c.NumHoles, c.CourseRating, c.SlopeRating, "
+        "(SELECT SUM(Par) FROM dbo.CourseHole WHERE CourseId = c.CourseId) AS Par "
+        "FROM dbo.Course c WHERE c.CourseRating IS NOT NULL AND c.SlopeRating IS NOT NULL ORDER BY c.CourseName")
+    index = result["index"]
+    result["courses"] = [dict(c, CourseHandicap=None if index is None else handicap.course_handicap(
+        index, c["CourseRating"], c["SlopeRating"], c["Par"], c["NumHoles"])) for c in rated]
+    return jsonify(result)
+
+
+def photo_response(table, key, item_id):
+    with pyodbc.connect(build_conn_str(load_config()), timeout=5) as conn:
+        row = conn.execute(f"SELECT Photo, PhotoContentType FROM dbo.{table} WHERE {key} = ?", (item_id,)).fetchone()
+    if not row or row.Photo is None:
+        return jsonify(error="No photo."), 404
+    return Response(bytes(row.Photo), mimetype=row.PhotoContentType,
+                    headers={"X-Content-Type-Options": "nosniff"})
+
+
+def store_photo(table, key, item_id, label):
+    content_type = (request.mimetype or "").lower()
+    data = request.get_data()
+    if content_type not in PHOTO_TYPES:
+        return jsonify(error="Photo must be a JPEG, PNG or WebP image."), 400
+    if not data or len(data) > MAX_PHOTO_BYTES:
+        return jsonify(error="Photo must be between 1 byte and 2 MB."), 400
+    if execute(f"UPDATE dbo.{table} SET Photo = ?, PhotoContentType = ? WHERE {key} = ?",
+               (data, content_type, item_id)) == 0:
+        return jsonify(error=f"{label} not found."), 404
+    return jsonify(ok=True)
+
+
+def clear_photo(table, key, item_id):
+    execute(f"UPDATE dbo.{table} SET Photo = NULL, PhotoContentType = NULL WHERE {key} = ?", (item_id,))
+    return jsonify(ok=True)
+
+
+@app.route("/api/players/<int:player_id>/photo", methods=["GET"])
+def get_player_photo(player_id):
+    return photo_response("Player", "PlayerId", player_id)
+
+
+@app.route("/api/players/<int:player_id>/photo", methods=["PUT"])
+def put_player_photo(player_id):
+    return store_photo("Player", "PlayerId", player_id, "Player")
+
+
+@app.route("/api/players/<int:player_id>/photo", methods=["DELETE"])
+def delete_player_photo(player_id):
+    return clear_photo("Player", "PlayerId", player_id)
+
+
+def parse_ratings(body):
+    rating, slope = body.get("courseRating"), body.get("slopeRating")
+    blank = lambda v: v is None or str(v).strip() == ""
+    if blank(rating) and blank(slope):
+        return None, None
+    if blank(rating) or blank(slope):
+        raise InputError("Enter both the course rating and the slope rating, or leave both blank.")
+    try:
+        rating = round(float(rating), 1)
+    except (TypeError, ValueError):
+        raise InputError("Course rating must be a number.") from None
+    if not 18.0 <= rating <= 90.0:
+        raise InputError("Course rating must be between 18.0 and 90.0.")
+    return rating, as_int(slope, "Slope rating", 55, 155)
 
 
 @app.route("/api/courses")
 def courses():
     return jsonify(query(
-        "SELECT CourseId, CourseName, NumHoles, Description, "
+        "SELECT CourseId, CourseName, NumHoles, Description, CourseRating, SlopeRating, "
         "CASE WHEN Photo IS NULL THEN 0 ELSE 1 END AS HasPhoto "
         "FROM dbo.Course ORDER BY CourseName"))
 
@@ -206,7 +320,7 @@ def courses():
 @app.route("/api/courses/<int:course_id>", methods=["GET"])
 def course(course_id):
     rows = query(
-        "SELECT CourseId, CourseName, NumHoles, Description, Notes, "
+        "SELECT CourseId, CourseName, NumHoles, Description, Notes, CourseRating, SlopeRating, "
         "CASE WHEN Photo IS NULL THEN 0 ELSE 1 END AS HasPhoto "
         "FROM dbo.Course WHERE CourseId = ?", (course_id,))
     if not rows:
@@ -216,44 +330,29 @@ def course(course_id):
 
 @app.route("/api/courses/<int:course_id>", methods=["PUT"])
 def update_course(course_id):
-    data = request.get_json(force=True)
-    description = (data.get("description") or "").strip()[:500] or None
-    notes = (data.get("notes") or "").strip() or None
-    if execute("UPDATE dbo.Course SET Description = ?, Notes = ? WHERE CourseId = ?",
-               (description, notes, course_id)) == 0:
+    data = json_body()
+    description = as_text(data.get("description"), "Description", 500, required=False)
+    notes = as_text(data.get("notes"), "Notes", 5000, required=False)
+    rating, slope = parse_ratings(data)
+    if execute("UPDATE dbo.Course SET Description = ?, Notes = ?, CourseRating = ?, SlopeRating = ? WHERE CourseId = ?",
+               (description, notes, rating, slope, course_id)) == 0:
         return jsonify(error="Course not found."), 404
     return jsonify(ok=True)
 
 
 @app.route("/api/courses/<int:course_id>/photo", methods=["GET"])
 def get_photo(course_id):
-    with pyodbc.connect(build_conn_str(load_config()), timeout=5) as conn:
-        row = conn.execute(
-            "SELECT Photo, PhotoContentType FROM dbo.Course WHERE CourseId = ?", (course_id,)).fetchone()
-    if not row or row.Photo is None:
-        return jsonify(error="No photo."), 404
-    return Response(bytes(row.Photo), mimetype=row.PhotoContentType,
-                    headers={"X-Content-Type-Options": "nosniff"})
+    return photo_response("Course", "CourseId", course_id)
 
 
 @app.route("/api/courses/<int:course_id>/photo", methods=["PUT"])
 def put_photo(course_id):
-    content_type = (request.mimetype or "").lower()
-    data = request.get_data()
-    if content_type not in PHOTO_TYPES:
-        return jsonify(error="Photo must be a JPEG, PNG or WebP image."), 400
-    if not data or len(data) > MAX_PHOTO_BYTES:
-        return jsonify(error="Photo must be between 1 byte and 2 MB."), 400
-    if execute("UPDATE dbo.Course SET Photo = ?, PhotoContentType = ? WHERE CourseId = ?",
-               (data, content_type, course_id)) == 0:
-        return jsonify(error="Course not found."), 404
-    return jsonify(ok=True)
+    return store_photo("Course", "CourseId", course_id, "Course")
 
 
 @app.route("/api/courses/<int:course_id>/photo", methods=["DELETE"])
 def delete_photo(course_id):
-    execute("UPDATE dbo.Course SET Photo = NULL, PhotoContentType = NULL WHERE CourseId = ?", (course_id,))
-    return jsonify(ok=True)
+    return clear_photo("Course", "CourseId", course_id)
 
 
 @app.route("/api/overview")
@@ -267,9 +366,12 @@ def overview():
         "SELECT TOP 6 RoundId, PlayedOn, CourseName, PlayerName, HolesScored, TotalStrokes, TotalToPar "
         "FROM dbo.vRoundSummary ORDER BY PlayedOn DESC, RoundId DESC, TotalToPar")
     leaderboard = query(
-        "SELECT PlayerName, COUNT(*) AS Rounds, "
+        "SELECT PlayerId, PlayerName, COUNT(*) AS Rounds, "
         "CAST(SUM(TotalToPar) * 1.0 / SUM(HolesScored) AS DECIMAL(5,2)) AS AvgToParPerHole "
-        "FROM dbo.vRoundSummary GROUP BY PlayerName ORDER BY AvgToParPerHole")
+        "FROM dbo.vRoundSummary GROUP BY PlayerId, PlayerName ORDER BY AvgToParPerHole")
+    indexes = {pid: handicap.calculate(rounds)["index"] for pid, rounds in load_rounds().items()}
+    for row in leaderboard:
+        row["HandicapIndex"] = indexes.get(row["PlayerId"])
     popular = query(
         "SELECT TOP 5 CourseName, COUNT(DISTINCT RoundId) AS Rounds, MAX(PlayedOn) AS LastPlayed "
         "FROM dbo.vRoundSummary GROUP BY CourseName ORDER BY Rounds DESC, CourseName")
@@ -327,6 +429,7 @@ def add_course():
         raise InputError("Number of holes must be 9 or 18.")
     description = as_text(body.get("description"), "Description", 500, required=False)
     notes = as_text(body.get("notes"), "Notes", 5000, required=False)
+    rating, slope = parse_ratings(body)
 
     holes = body.get("holes")
     if not isinstance(holes, list) or len(holes) != num_holes:
@@ -346,9 +449,9 @@ def add_course():
 
     def work(cur):
         course_id = cur.execute(
-            "INSERT INTO dbo.Course (CourseName, NumHoles, Description, Notes) "
-            "OUTPUT INSERTED.CourseId VALUES (?, ?, ?, ?)",
-            name, num_holes, description, notes).fetchone()[0]
+            "INSERT INTO dbo.Course (CourseName, NumHoles, Description, Notes, CourseRating, SlopeRating) "
+            "OUTPUT INSERTED.CourseId VALUES (?, ?, ?, ?, ?, ?)",
+            name, num_holes, description, notes, rating, slope).fetchone()[0]
         for number, metres, par, stroke_index in parsed:
             cur.execute(
                 "INSERT INTO dbo.CourseHole (CourseId, HoleNumber, Metres, Par, StrokeIndex) VALUES (?, ?, ?, ?, ?)",
@@ -408,6 +511,76 @@ def add_round():
         return round_id
 
     return jsonify(RoundId=transaction(work)), 201
+
+
+@app.route("/api/reports/player/<int:player_id>")
+def report_player(player_id):
+    player = query("SELECT PlayerId, PlayerName FROM dbo.Player WHERE PlayerId = ?", (player_id,))
+    if not player:
+        return jsonify(error="Player not found."), 404
+    stats = query(
+        "SELECT CourseName, RoundsPlayed, BestStrokes, AverageStrokes, LastPlayed "
+        "FROM dbo.vPlayerCourseStats WHERE PlayerId = ? ORDER BY CourseName", (player_id,))
+    rounds = query(
+        "SELECT RoundId, PlayedOn, CourseName, HolesScored, TotalPar, TotalStrokes, TotalToPar "
+        "FROM dbo.vRoundSummary WHERE PlayerId = ? ORDER BY PlayedOn DESC, RoundId DESC", (player_id,))
+    return jsonify(player=player[0], stats=stats, rounds=rounds)
+
+
+@app.route("/api/reports/course/<int:course_id>")
+def report_course(course_id):
+    course_rows = query(
+        "SELECT c.CourseId, c.CourseName, c.NumHoles, c.Description, c.Notes, c.CourseRating, c.SlopeRating, "
+        "CASE WHEN c.Photo IS NULL THEN 0 ELSE 1 END AS HasPhoto, "
+        "(SELECT SUM(Par) FROM dbo.CourseHole WHERE CourseId = c.CourseId) AS TotalPar, "
+        "(SELECT SUM(Metres) FROM dbo.CourseHole WHERE CourseId = c.CourseId) AS TotalMetres "
+        "FROM dbo.Course c WHERE c.CourseId = ?", (course_id,))
+    if not course_rows:
+        return jsonify(error="Course not found."), 404
+    holes = query(
+        "SELECT HoleNumber, Metres, Par, StrokeIndex, TimesPlayed, AverageStrokes, BestStrokes "
+        "FROM dbo.vCourseHoleStats WHERE CourseId = ? ORDER BY HoleNumber", (course_id,))
+    players = query(
+        "SELECT PlayerName, RoundsPlayed, BestStrokes, AverageStrokes, LastPlayed "
+        "FROM dbo.vPlayerCourseStats WHERE CourseId = ? ORDER BY BestStrokes, PlayerName", (course_id,))
+    rounds = query(
+        "SELECT RoundId, PlayedOn, PlayerName, HolesScored, TotalPar, TotalStrokes, TotalToPar "
+        "FROM dbo.vRoundSummary WHERE CourseId = ? ORDER BY PlayedOn DESC, RoundId DESC, TotalStrokes", (course_id,))
+    return jsonify(course=course_rows[0], holes=holes, players=players, rounds=rounds)
+
+
+@app.route("/api/database/info")
+def database_info():
+    # Express editions cap data files (not logs) at 10 GB.
+    express_limit_mb = 10 * 1024
+    server = query(
+        "SELECT CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(200)) AS ServerName, "
+        "CAST(SERVERPROPERTY('Edition') AS NVARCHAR(200)) AS Edition, "
+        "CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(50)) AS Version, "
+        "SUSER_SNAME() AS LoginName")[0]
+    db = query(
+        "SELECT name AS Name, create_date AS Created, compatibility_level AS CompatibilityLevel, "
+        "recovery_model_desc AS RecoveryModel, collation_name AS Collation, state_desc AS State "
+        "FROM sys.databases WHERE name = DB_NAME()")[0]
+    files = query(
+        "SELECT type_desc AS Type, name AS Name, CAST(size * 8 / 1024.0 AS DECIMAL(12,2)) AS SizeMB "
+        "FROM sys.database_files ORDER BY type, file_id")
+    tables = query(
+        "SELECT t.name AS Name, "
+        "(SELECT SUM(p.rows) FROM sys.partitions p WHERE p.object_id = t.object_id AND p.index_id IN (0, 1)) AS [Rows], "
+        "CAST((SELECT SUM(a.total_pages) FROM sys.partitions p "
+        "JOIN sys.allocation_units a ON a.container_id = p.partition_id "
+        "WHERE p.object_id = t.object_id) * 8 / 1024.0 AS DECIMAL(12,2)) AS SizeMB "
+        "FROM sys.tables t ORDER BY SizeMB DESC, t.name")
+    photos = query(
+        "SELECT COUNT(Photo) AS Count, CAST(ISNULL(SUM(DATALENGTH(Photo)), 0) / 1048576.0 AS DECIMAL(12,2)) AS SizeMB "
+        "FROM dbo.Course")[0]
+    data_mb = sum(f["SizeMB"] for f in files if f["Type"] == "ROWS")
+    log_mb = sum(f["SizeMB"] for f in files if f["Type"] == "LOG")
+    is_express = "express" in (server["Edition"] or "").lower()
+    return jsonify(server=server, database=db, files=files, tables=tables, photos=photos,
+                   dataMB=round(data_mb, 2), logMB=round(log_mb, 2),
+                   limitMB=express_limit_mb if is_express else None)
 
 
 if __name__ == "__main__":

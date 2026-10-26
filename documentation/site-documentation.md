@@ -57,7 +57,10 @@ All paths start with `/api`. Request and response bodies are JSON unless stated.
 | Method and path | Description |
 | --- | --- |
 | `GET /overview` | Totals, leaderboard, most played courses and recent rounds. |
-| `GET /players` | All players. |
+| `GET /players` | All players with `HasPhoto`. |
+| `GET /handicaps` | Current Handicap Index for each player id (`null` when not yet established). |
+| `GET /players/<id>/handicap` | Handicap Index with its workings: scores used, course handicaps, ignored rounds. |
+| `GET /players/<id>/photo` | Player photo bytes. `404` if none. |
 | `GET /players/<id>/stats` | Course stats from `vPlayerCourseStats`. |
 | `GET /players/<id>/history` | Rounds from `usp_GetPlayerHistory`. |
 | `GET /courses` | Courses with description and `HasPhoto`. |
@@ -66,16 +69,21 @@ All paths start with `/api`. Request and response bodies are JSON unless stated.
 | `GET /courses/<id>/photo` | Photo bytes with the stored content type. `404` if none. |
 | `GET /rounds` | One summary row per player per round, newest first. |
 | `GET /rounds/<id>/scorecard` | Hole-by-hole scores for every player in a round. |
+| `GET /reports/player/<id>` | Player report data: `player`, `stats` (`vPlayerCourseStats`) and `rounds` (`vRoundSummary`). |
+| `GET /reports/course/<id>` | Course report data: `course`, `holes` (`vCourseHoleStats`), `players` (`vPlayerCourseStats`) and `rounds` (`vRoundSummary`). |
+| `GET /database/info` | Server, database, file sizes, table sizes and row counts, photo storage and the Express size limit. |
 
 ### Create and update
 
 | Method and path | Body | Description |
 | --- | --- | --- |
 | `POST /players` | `{ "name" }` | Adds a player. Returns `PlayerId`. |
-| `POST /courses` | `{ "name", "numHoles", "description", "notes", "holes": [{ "hole", "metres", "par", "strokeIndex" }] }` | Adds a course and all its holes. Returns `CourseId`. |
-| `PUT /courses/<id>` | `{ "description", "notes" }` | Updates course details. |
+| `POST /courses` | `{ "name", "numHoles", "description", "notes", "courseRating", "slopeRating", "holes": [{ "hole", "metres", "par", "strokeIndex" }] }` | Adds a course and all its holes. Rating and slope are optional but needed for handicaps. Returns `CourseId`. |
+| `PUT /courses/<id>` | `{ "description", "notes", "courseRating", "slopeRating" }` | Updates course details. |
 | `PUT /courses/<id>/photo` | Raw image bytes with `Content-Type` of `image/jpeg`, `image/png` or `image/webp` | Stores or replaces the photo. |
 | `DELETE /courses/<id>/photo` | None | Removes the photo. |
+| `PUT /players/<id>/photo` | Raw image bytes (same types and size limit as course photos) | Stores or replaces a player's photo. |
+| `DELETE /players/<id>/photo` | None | Removes a player's photo. |
 | `POST /rounds` | `{ "courseId", "playedOn": "YYYY-MM-DD", "players": [{ "playerId", "markerPlayerId", "scores": [..] }] }` | Adds a round, its players and all scores. Returns `RoundId`. |
 
 ### Configuration
@@ -86,12 +94,46 @@ All paths start with `/api`. Request and response bodies are JSON unless stated.
 | `PUT /config` | Saves settings. A blank password keeps the saved one. |
 | `POST /config/test` | Tries a connection with the supplied settings without saving. |
 
+## Handicap calculation
+
+The Handicap Index follows the World Handicap System, which Golf Australia uses (GA Handicap). The calculation lives in [website/handicap.py](../website/handicap.py). Each player's complete rounds are replayed in date order from `vRoundScorecard` and the course ratings, so the index always reflects the data in the database. It is calculated on request and is not stored.
+
+**Inputs.** Each course needs a **course rating** and **slope rating** for the holes on its card (a 9-hole course uses its 9-hole values). Rounds on courses without them are ignored and listed in the handicap panel.
+
+**Steps for each round:**
+
+1. **Adjusted gross score.** Each hole is capped at net double bogey: par + 2 + the strokes the player receives on that hole. Strokes come from the player's course handicap and the hole's stroke index. Before a Handicap Index exists the cap is par + 5.
+2. **Score differential** $= \frac{113}{\text{slope}} \times (\text{adjusted gross} - \text{course rating})$, rounded to one decimal. The Playing Conditions Calculation is treated as 0.
+3. **9-hole rounds.** Without an index, two 9-hole rounds are added together in date order to make one 18-hole differential. With an index, a 9-hole differential is increased by the expected differential for the other nine, $0.52 \times \text{index} + 1.2$.
+4. **Exceptional scores.** If a differential is at least 7.0 below the index, the most recent 20 differentials (including the new one) are reduced by 1.0. At least 10.0 below, by 2.0.
+5. **Index.** A Handicap Index needs 3 differentials. It is the average of the lowest differentials from the last 20, plus an adjustment while fewer than 20 exist:
+
+   | Scores | Lowest used | Adjustment |
+   | --- | --- | --- |
+   | 3 | 1 | -2.0 |
+   | 4 | 1 | -1.0 |
+   | 5 | 1 | 0 |
+   | 6 | 2 | -1.0 |
+   | 7 to 8 | 2 | 0 |
+   | 9 to 11 | 3 | 0 |
+   | 12 to 14 | 4 | 0 |
+   | 15 to 16 | 5 | 0 |
+   | 17 to 18 | 6 | 0 |
+   | 19 | 7 | 0 |
+   | 20 | 8 | 0 |
+
+6. **Caps.** The index may rise by at most 3.0 above the lowest index of the previous 12 months before increases are halved (soft cap), and by no more than 5.0 in total (hard cap). The maximum index is 54.0.
+
+**Course handicap** for a course $= \text{index} \times \frac{\text{slope}}{113} + (\text{course rating} - \text{par})$, rounded to the nearest whole number. For a 9-hole course the index is halved first.
+
+This is an estimate for personal use. It is not an official Golf Australia handicap, which is issued through a club and its handicapping system. Ratings must come from the club's scorecard; the sample courses use made-up values.
+
 ## Validation and error handling
 
 Input is checked on the server before anything is written:
 
 - **Players:** name required, up to 100 characters.
-- **Courses:** name required, 9 or 18 holes, exactly one entry per hole. Metres 1 to 2000, par 3 to 6, and stroke indexes between 1 and 18 that are all different. Description up to 500 characters, notes up to 5000.
+- **Courses:** name required, 9 or 18 holes, exactly one entry per hole. Metres 1 to 2000, par 3 to 6, and stroke indexes between 1 and 18 that are all different. Description up to 500 characters, notes up to 5000. Course rating 18.0 to 90.0 and slope rating 55 to 155, entered together or not at all.
 - **Rounds:** valid date, existing course, at least one player, no player repeated, and a score from 1 to 20 for every hole. A marker must be a different player in the same round.
 - **Photos:** JPEG, PNG or WebP only, 1 byte to 2 MB. SVG is rejected because it can contain scripts. Responses carry `X-Content-Type-Options: nosniff`.
 
@@ -106,9 +148,21 @@ Creating a course or round runs in a single transaction and is rolled back if an
 
 All SQL uses parameters, so user input is never concatenated into queries.
 
+## Reports
+
+Reports are rendered in the browser from the `/api/reports/*` endpoints, which read the database views (`vRoundSummary`, `vPlayerCourseStats` and `vCourseHoleStats`). **Print / Save as PDF** calls `window.print()`, so PDFs are produced by the browser's print dialog and no PDF library is needed. A `@media print` stylesheet hides the sidebar and controls and keeps table rows from splitting across pages. The page title is set to the report title while printing so the saved file gets a sensible name.
+
+## Database information
+
+`/api/database/info` reads `SERVERPROPERTY`, `sys.databases`, `sys.database_files`, `sys.tables`, `sys.partitions` and `sys.allocation_units`, plus `DATALENGTH` on the photo column. The Express 10 GB limit is applied to data files only (log files are excluded) and only when the edition name contains "Express".
+
+## Theme
+
+The theme is chosen in **Settings > Appearance** and stored in the browser's `localStorage` under `golf-stats-theme` (`dark`, `light` or `system`, defaulting to `system`). A small script at the top of `index.html` applies it before the page renders, setting `data-theme` on the `<html>` element. All colours are CSS variables defined in `:root`, and `html[data-theme="dark"]` overrides them. For `system`, a `prefers-color-scheme` listener updates the theme live. The page switches to the light theme while printing.
+
 ## Front end
 
-`index.html` is organised as one function per page: `showOverview`, `showRounds`, `showPlayers`, `showCourses`, `showCourse`, `showSettings`, plus the forms `showAddCourse` and `showAddRound`. Small helpers (`api`, `sendJson`, `send`, `el`, `table`, `pageHeader`) build the DOM. Text is always set through `textContent`, never `innerHTML`, so database values cannot inject markup.
+`index.html` is organised as one function per page: `showOverview`, `showRounds`, `showPlayers`, `showCourses` (with `renderCourse`), `showReports`, `showSettings`, plus the forms `showAddCourse` and `showAddRound`. Every page uses the same layout: a top bar (`topBar`) holding the page's selector and main action button, then a profile card (`profileCard` and `badge`), then panels and tables. Small helpers (`api`, `sendJson`, `send`, `el`, `table`, `actionButton`) build the DOM. The icon is [website/favicon.svg](../website/favicon.svg), served at `/favicon.svg` (and `/favicon.ico` redirects to it) and also used as the logo in the sidebar. Text is always set through `textContent`, never `innerHTML`, so database values cannot inject markup.
 
 The layout uses a sidebar for navigation and collapses to a top bar below 720px wide. Colours and spacing are CSS variables at the top of the file.
 

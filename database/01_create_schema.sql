@@ -28,6 +28,15 @@ GO
 IF COL_LENGTH(N'dbo.Course', N'PhotoContentType') IS NULL
     ALTER TABLE dbo.Course ADD PhotoContentType NVARCHAR(100) NULL;
 GO
+-- Ratings for the holes on the card (9-hole values for a 9-hole course); needed to calculate handicaps.
+IF COL_LENGTH(N'dbo.Course', N'CourseRating') IS NULL
+    ALTER TABLE dbo.Course ADD CourseRating DECIMAL(4,1) NULL
+        CONSTRAINT CK_Course_CourseRating CHECK (CourseRating BETWEEN 18.0 AND 90.0);
+GO
+IF COL_LENGTH(N'dbo.Course', N'SlopeRating') IS NULL
+    ALTER TABLE dbo.Course ADD SlopeRating SMALLINT NULL
+        CONSTRAINT CK_Course_SlopeRating CHECK (SlopeRating BETWEEN 55 AND 155);
+GO
 
 -- Printed scorecard data: one row per hole per course.
 IF OBJECT_ID(N'dbo.CourseHole', N'U') IS NULL
@@ -47,6 +56,13 @@ CREATE TABLE dbo.Player (
     PlayerId    INT IDENTITY(1,1) CONSTRAINT PK_Player PRIMARY KEY,
     PlayerName  NVARCHAR(100) NOT NULL CONSTRAINT UQ_Player_Name UNIQUE
 );
+GO
+
+IF COL_LENGTH(N'dbo.Player', N'Photo') IS NULL
+    ALTER TABLE dbo.Player ADD Photo VARBINARY(MAX) NULL;
+GO
+IF COL_LENGTH(N'dbo.Player', N'PhotoContentType') IS NULL
+    ALTER TABLE dbo.Player ADD PhotoContentType NVARCHAR(100) NULL;
 GO
 
 -- One row per group round on a course.
@@ -154,6 +170,24 @@ SELECT  s.PlayerId,
 FROM    dbo.vRoundSummary s
 JOIN    dbo.Course c ON c.CourseId = s.CourseId AND c.NumHoles = s.HolesScored
 GROUP BY s.PlayerId, s.PlayerName, s.CourseId, s.CourseName;
+GO
+
+-- Per-hole stats for each course across all recorded rounds (used by the course report).
+CREATE OR ALTER VIEW dbo.vCourseHoleStats
+AS
+SELECT  h.CourseId,
+        c.CourseName,
+        h.HoleNumber,
+        h.Metres,
+        h.Par,
+        h.StrokeIndex,
+        COUNT(s.Strokes)                                 AS TimesPlayed,
+        CAST(AVG(s.Strokes * 1.0) AS DECIMAL(4,2))       AS AverageStrokes,
+        MIN(s.Strokes)                                   AS BestStrokes
+FROM    dbo.CourseHole h
+JOIN    dbo.Course c ON c.CourseId = h.CourseId
+LEFT JOIN dbo.vRoundScorecard s ON s.CourseId = h.CourseId AND s.HoleNumber = h.HoleNumber
+GROUP BY h.CourseId, c.CourseName, h.HoleNumber, h.Metres, h.Par, h.StrokeIndex;
 GO
 
 -- A player's rounds, newest first (include @CourseId to filter to one course).

@@ -9,7 +9,7 @@ Run in order, e.g. with `sqlcmd -S .\SQLEXPRESS -E -i <script>`.
 | Script | Purpose |
 | --- | --- |
 | [01_create_schema.sql](01_create_schema.sql) | Creates the database, tables, constraints, validation trigger, views and stored procedures. Safe to re-run. |
-| [02_seed_sample_data.sql](02_seed_sample_data.sql) | Adds three sample courses (9, 9 and 18 holes), three players and three rounds with scores. The Par 3 course uses holes 1-9 from the scorecard; its name is a placeholder. |
+| [02_seed_sample_data.sql](02_seed_sample_data.sql) | Adds three sample courses (9, 9 and 18 holes) with sample ratings, three players and five rounds with scores, enough for Alex and Sam to have a Handicap Index. The Par 3 course uses holes 1-9 from the scorecard; its name is a placeholder. |
 
 ## Entity Relationship Diagram
 
@@ -30,6 +30,8 @@ erDiagram
         nvarchar Notes "optional"
         varbinary Photo "optional image"
         nvarchar PhotoContentType
+        decimal CourseRating "optional"
+        smallint SlopeRating "optional, 55-155"
     }
     CourseHole {
         int CourseId PK, FK
@@ -41,6 +43,8 @@ erDiagram
     Player {
         int PlayerId PK
         nvarchar PlayerName UK
+        varbinary Photo "optional image"
+        nvarchar PhotoContentType
     }
     Round {
         int RoundId PK
@@ -69,6 +73,7 @@ erDiagram
 | `vRoundScorecard` | Each score with the hole's metres, par, stroke index and score relative to par. |
 | `vRoundSummary` | One row per round with holes scored, total par, total strokes and total to par. |
 | `vPlayerCourseStats` | Per player per course: rounds played, best, average and last played (complete rounds only). |
+| `vCourseHoleStats` | Per hole per course: times played, average and best strokes across all rounds. |
 | `usp_GetPlayerHistory @PlayerId, @CourseId = NULL` | A player's rounds, newest first, optionally filtered by course. |
 | `usp_GetRoundScorecard @RoundId, @PlayerId = NULL` | Hole-by-hole card for one round, all players or one. |
 
