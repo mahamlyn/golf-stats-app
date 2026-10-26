@@ -313,8 +313,9 @@ def parse_ratings(body):
 def courses():
     return jsonify(query(
         "SELECT CourseId, CourseName, NumHoles, Description, CourseRating, SlopeRating, "
+        "(SELECT SUM(Par) FROM dbo.CourseHole h WHERE h.CourseId = c.CourseId) AS TotalPar, "
         "CASE WHEN Photo IS NULL THEN 0 ELSE 1 END AS HasPhoto "
-        "FROM dbo.Course ORDER BY CourseName"))
+        "FROM dbo.Course c ORDER BY CourseName"))
 
 
 @app.route("/api/courses/<int:course_id>", methods=["GET"])

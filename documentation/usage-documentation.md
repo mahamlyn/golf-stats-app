@@ -58,7 +58,7 @@ This is an estimate for personal use, not an official Golf Australia handicap. T
 
 ## Courses
 
-The Courses page has a **Course** selector and an **Add course** button at the top, followed by the selected course's photo, name, rating and par.
+The Courses page has an **Add course** button at the top, followed by a tile for each course. Each tile shows the course photo (or its initials), name, number of holes, par, rating and description. Select a tile to open the course.
 
 ### Add a course
 
@@ -71,7 +71,7 @@ The Courses page has a **Course** selector and an **Add course** button at the t
 
 ### View or edit a course
 
-Choose a course in the selector to see its photo, description, notes and hole table. Use **Edit course details** at the bottom of the page to change the description, notes, rating and slope, upload a new photo or remove the photo.
+On a course page, the profile card shows the photo, name, rating and par, followed by the description, notes and hole table. Use **All courses** at the top to go back to the tiles. Use **Edit course details** at the bottom of the page to change the description, notes, rating and slope, upload a new photo or remove the photo.
 
 Holes and the number of holes cannot be changed after a course is created.
 

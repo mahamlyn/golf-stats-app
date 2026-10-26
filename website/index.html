@@ -104,7 +104,8 @@ applyTheme();
   .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 1.5rem; }
   .hero { width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius); box-shadow: var(--shadow); margin: 1rem 0; }
   .panel { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.25rem 1.5rem; margin: 1rem 0; }
-  .panel h3 { margin-top: 0; }
+  .panel > :first-child { margin-top: 0; }
+  .panel table { box-shadow: none; border: 1px solid var(--border); }
   .panel .notes { white-space: pre-wrap; margin: 0; color: var(--text); }
   textarea { font: inherit; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 10px; width: 100%; min-height: 90px; resize: vertical;
              background: var(--surface); color: var(--text); }
@@ -129,6 +130,16 @@ applyTheme();
            background: linear-gradient(135deg, #22c55e, #15803d); color: #fff; font-size: 2.4rem; font-weight: 700; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; }
   .logo-lg { width: 112px; height: 112px; border-radius: 28px; display: block; }
+  .course-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; }
+  .course-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+                 cursor: pointer; transition: transform .15s, box-shadow .15s; }
+  .course-card:hover, .course-card:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(16,24,40,.18); outline: none; }
+  .course-card .body { padding: 1rem 1.1rem 1.2rem; }
+  .course-card h3 { margin: 0 0 .25rem; }
+  .course-card p { margin: .5rem 0 0; font-size: .9rem; }
+  .photo { width: 100%; height: 160px; object-fit: cover; display: block; }
+  .photo.empty { display: grid; place-items: center; font-size: 2.6rem; font-weight: 700; color: #fff;
+                 background: linear-gradient(135deg, #22c55e, #15803d); }
   .profile { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; background: var(--surface);
              border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.5rem; margin: 1rem 0; }
   .profile-info { flex: 1; min-width: 240px; }
@@ -476,22 +487,34 @@ async function showPlayers(selectId) {
 }
 
 async function showCourses(selectId) {
+  if (selectId) return showCourseDetail(selectId);
   const courses = await api('courses');
-  const select = el('select');
-  for (const c of courses) select.append(el('option', { value: c.CourseId, textContent: c.CourseName }));
+  const grid = el('div', { className: 'course-grid' });
+  for (const c of courses) {
+    const thumb = c.HasPhoto
+      ? el('img', { className: 'photo', src: `/api/courses/${c.CourseId}/photo`, alt: '' })
+      : el('div', { className: 'photo empty', textContent: initials(c.CourseName) });
+    const facts = [`${c.NumHoles} holes`, `par ${c.TotalPar}`];
+    if (c.CourseRating) facts.push(`rating ${c.CourseRating}`);
+    const card = el('div', { className: 'course-card', tabIndex: 0 }, thumb, el('div', { className: 'body' },
+      el('h3', { textContent: c.CourseName }),
+      el('div', { className: 'muted', textContent: facts.join(' \u00b7 ') }),
+      el('p', { textContent: c.Description || 'No description yet.' })));
+    card.onclick = () => showCourses(c.CourseId);
+    card.onkeydown = e => { if (e.key === 'Enter') showCourses(c.CourseId); };
+    grid.append(card);
+  }
+  main.replaceChildren(topBar('Courses', actionButton('Add course', showAddCourse)),
+    courses.length ? grid : el('p', { textContent: 'Add a course to get started.' }));
+}
+
+async function showCourseDetail(id) {
+  const back = el('button', { type: 'button', textContent: '\u2190 All courses' });
+  back.onclick = () => showCourses();
   const detail = el('div');
-  const load = async () => {
-    if (!select.value) {
-      detail.replaceChildren(el('p', { textContent: 'Add a course to get started.' }));
-      return;
-    }
-    try { await renderCourse(select.value, detail); }
-    catch (e) { detail.replaceChildren(el('div', { className: 'err', textContent: e.message })); }
-  };
-  select.onchange = load;
-  main.replaceChildren(topBar('Course', select, actionButton('Add course', showAddCourse)), detail);
-  if (courses.length) select.value = selectId || courses[0].CourseId;
-  load();
+  main.replaceChildren(topBar('Course', back, actionButton('Add course', showAddCourse)), detail);
+  try { await renderCourse(id, detail); }
+  catch (e) { detail.replaceChildren(el('div', { className: 'err', textContent: e.message })); }
 }
 
 async function renderCourse(id, container) {
@@ -641,7 +664,7 @@ async function showSettings() {
     label('Authentication', auth), sqlFields,
     el('label', { className: 'row' }, trust, 'Trust server certificate'),
     el('div', { className: 'row' }, save, test), status);
-  const infoBox = el('div');
+  const infoBox = el('div', { className: 'panel' });
   const fmtMB = v => v >= 1024 ? (v / 1024).toFixed(2) + ' GB' : v.toFixed(2) + ' MB';
   const kv = rows => el('dl', { className: 'kv' },
     ...rows.flatMap(([k, v]) => [el('dt', { textContent: k }), el('dd', { textContent: String(v) })]));

@@ -63,7 +63,7 @@ All paths start with `/api`. Request and response bodies are JSON unless stated.
 | `GET /players/<id>/photo` | Player photo bytes. `404` if none. |
 | `GET /players/<id>/stats` | Course stats from `vPlayerCourseStats`. |
 | `GET /players/<id>/history` | Rounds from `usp_GetPlayerHistory`. |
-| `GET /courses` | Courses with description and `HasPhoto`. |
+| `GET /courses` | Courses with description, rating, slope, total par and `HasPhoto`. |
 | `GET /courses/<id>` | One course including notes. |
 | `GET /courses/<id>/holes` | Hole details for a course. |
 | `GET /courses/<id>/photo` | Photo bytes with the stored content type. `404` if none. |
@@ -162,7 +162,7 @@ The theme is chosen in **Settings > Appearance** and stored in the browser's `lo
 
 ## Front end
 
-`index.html` is organised as one function per page: `showOverview`, `showRounds`, `showPlayers`, `showCourses` (with `renderCourse`), `showReports`, `showSettings`, plus the forms `showAddCourse` and `showAddRound`. Every page uses the same layout: a top bar (`topBar`) holding the page's selector and main action button, then a profile card (`profileCard` and `badge`), then panels and tables. Small helpers (`api`, `sendJson`, `send`, `el`, `table`, `actionButton`) build the DOM. The icon is [website/favicon.svg](../website/favicon.svg), served at `/favicon.svg` (and `/favicon.ico` redirects to it) and also used as the logo in the sidebar. Text is always set through `textContent`, never `innerHTML`, so database values cannot inject markup.
+`index.html` is organised as one function per page: `showOverview`, `showRounds`, `showPlayers`, `showCourses` (tiles) with `showCourseDetail` and `renderCourse`, `showReports`, `showSettings`, plus the forms `showAddCourse` and `showAddRound`. Every page uses the same layout: a top bar (`topBar`) holding the page's selector or title and main action button, then a profile card (`profileCard` and `badge`), then panels and tables. The Courses page is the exception: it shows tiles (`.course-card`) under the top bar, and a course opens its own detail page. Small helpers (`api`, `sendJson`, `send`, `el`, `table`, `actionButton`) build the DOM. The icon is [website/favicon.svg](../website/favicon.svg), served at `/favicon.svg` (and `/favicon.ico` redirects to it) and also used as the logo in the sidebar. Text is always set through `textContent`, never `innerHTML`, so database values cannot inject markup.
 
 The layout uses a sidebar for navigation and collapses to a top bar below 720px wide. Colours and spacing are CSS variables at the top of the file.
 
