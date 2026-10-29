@@ -82,41 +82,68 @@ Host the app at the IIS site's root, such as `https://golf.example.org/`, rather
 
 The repository includes `.github/workflows/deploy-windows.yml`, a manual-only deployment workflow. It runs the checks and deployment steps in `scripts/deploy-golf-stats.ps1`. Before registering the runner, an administrator can use [install-golf-stats-prerequisites.ps1](../scripts/install-golf-stats-prerequisites.ps1) to install and configure the non-SQL machine prerequisites. The bootstrap does not install SQL Server, create the IIS site or TLS binding, configure the Waitress Windows service, or register the GitHub runner; those remain separate setup steps.
 
-### One-time GitHub and runner setup
+### Prepare the Windows Runner
 
-Run the bootstrap from an elevated 64-bit PowerShell session on Windows Server 2022. It uses the preinstalled Chocolatey 2.7.5+ client to fetch packages, so ensure `choco.exe` is on `PATH` and the server can reach its configured Chocolatey source and package download locations:
+1. On Windows Server 2022, run the prerequisite bootstrap from an elevated 64-bit PowerShell session. It requires the already-installed Chocolatey 2.7.5+ client and access to its configured package source:
 
-```powershell
-.\scripts\install-golf-stats-prerequisites.ps1
-```
+   ```powershell
+   .\scripts\install-golf-stats-prerequisites.ps1
+   ```
 
-The script enables IIS features with `Install-WindowsFeature`, installs Python 3.12 x64 (`python312`), ODBC Driver 18 (`sqlserver-odbcdriver-18`), `sqlcmd` (`sqlserver-cmdlineutils`), URL Rewrite (`urlrewrite`) and ARR (`iis-arr`) with Chocolatey, then enables ARR proxying. It retries transient Chocolatey feed/network errors up to three times after the initial attempt. It is safe to rerun: already-installed components are detected and skipped. If a reboot is required, restart before continuing. `sqlcmd` and ODBC are client tools/drivers only; this script does not install the SQL Server engine or create a database.
+   The script installs required IIS features with `Install-WindowsFeature`, then Python 3.12 x64 (`python312`), ODBC Driver 18 (`sqlserver-odbcdriver-18`), `sqlcmd` (`sqlserver-cmdlineutils`), URL Rewrite (`urlrewrite`) and ARR (`iis-arr`) with Chocolatey. It enables ARR proxying, skips components already installed, and retries transient feed/network errors. `sqlcmd` and ODBC are client tools only; this does not install the SQL Server engine.
+2. In the GitHub repository, open **Settings > Actions > Runners > New self-hosted runner**, select **Windows** and **x64**, then follow the generated registration instructions on the server. GitHub supplies a short-lived registration token; enter it only in the runner setup prompt and never commit or document it.
+3. Assign the custom label `golf-stats-prod`. The workflow also requires the standard `self-hosted`, `Windows` and `X64` labels. Install the runner as a Windows service and configure it to run as a dedicated deployment identity so it is available after logoff and restart.
+4. The runner identity needs local rights to install files, change the app configuration, set ACLs and restart the Waitress service. It also needs Windows Authentication access to the target SQL instance for schema deployment, and permission to access the IIS HTTPS health endpoint. Use a dedicated identity, not a personal account. The Waitress service uses a separate identity with separate runtime SQL permissions.
+5. Treat this production runner as highly privileged. Restrict repository and workflow-file write access, restrict who can start deployments, and do not run pull-request or other untrusted workflows on this runner. A workflow executed on it can use the runner service identity's server and database permissions.
 
-1. Install and register a self-hosted GitHub Actions runner on the Windows Server. Add the custom runner label `golf-stats-prod` in addition to the default `self-hosted`, `Windows` and `X64` labels. Run the runner as a dedicated deployment identity with only the local administrator and SQL deployment rights needed for this job. Add this identity to the IIS Windows Authentication allow-list so the workflow can call its HTTPS health endpoint.
-2. Do not allow pull-request jobs or untrusted repository code to run on this production runner. Workflows execute with the runner identity's server and database permissions. Restrict who can edit workflows and start deployments.
-3. Create a GitHub Environment named `production`. Require reviewer approval and restrict permitted deployment branches to the trusted release branch (for example, `main`). The workflow uses this environment as its approval gate.
-4. Add these environment variables to `production`:
+### Configure the GitHub Environment
+
+1. In **Settings > Environments**, create an environment named `production`.
+2. Require approval from an appropriate reviewer and limit deployment branches to the trusted release branch, such as `main`. The workflow job targets this environment, so GitHub applies its protection rules before the deployment job runs.
+3. Add these **environment variables** (not secrets) to `production`:
 
    | Variable | Example | Purpose |
    | --- | --- | --- |
-   | `GOLF_DEPLOY_ROOT` | `C:\Apps\GolfStats` | Stable deployment root; the website is placed in its `website` subdirectory. |
-   | `GOLF_SERVICE_NAME` | `GolfStatsWaitress` | Name of the pre-created Waitress Windows service. |
+   | `GOLF_DEPLOY_ROOT` | `C:\Apps\GolfStats` | Stable deployment root; app files go in its `website` subdirectory. |
+   | `GOLF_SERVICE_NAME` | `GolfStatsWaitress` | Existing Waitress Windows service name. |
    | `GOLF_IIS_SITE_NAME` | `Golf Stats` | Existing IIS site name. |
-   | `GOLF_HEALTH_URL` | `https://golf.example.org/api/database/info` | HTTPS health endpoint, reachable from the runner and authenticated with its Windows identity. |
+   | `GOLF_HEALTH_URL` | `https://golf.example.org/api/database/info` | HTTPS health endpoint accessible to the runner identity. |
 
-5. Ensure the runner identity can connect to SQL Server with Windows Authentication, create `GolfStats` if it does not exist, and apply the schema objects on each deployment. This identity is separate from the Waitress service identity. Use a dedicated SQL deployment principal and grant only the permissions required for database creation and schema changes; do not use a personal login. The Waitress service identity needs its own runtime permissions on `GolfStats`.
-6. Pre-create the Windows service using the dedicated Waitress service identity. Configure it for automatic startup and restart-on-failure, and set it to run `website\\.venv\\Scripts\\waitress-serve.exe --listen=127.0.0.1:8000 app:app` with its working directory set to `website`. The first workflow run expects the service to exist, though it will create the virtual environment if absent. Ensure the IIS reverse-proxy rule targets `http://127.0.0.1:8000/` and that the HTTPS health URL returns the app's JSON database information.
+   The workflow does not store a SQL password in GitHub; SQL uses the runner's Windows identity. Protect access to these variables and the environment as deployment configuration.
+4. Before the first deployment, create the IIS site and HTTPS binding, configure Windows Authentication (Anonymous disabled), create its reverse-proxy rule to `http://127.0.0.1:8000/`, and create the Waitress Windows service. The service must run automatically under its dedicated identity, listen only on loopback, and launch `website\.venv\Scripts\waitress-serve.exe --listen=127.0.0.1:8000 app:app` with the working directory set to `website`. The health URL must return `/api/database/info` as JSON when requested using the runner identity's Windows credentials.
+5. Grant the runner's SQL deployment identity the SQL permissions to create `GolfStats` and apply schema changes. The workflow checks that the target SQL edition is **Express** and the version supports the schema scripts. Do not grant the Waitress runtime identity deployment privileges.
 
-### Running a deployment
+### Run a Manual Deployment
 
-1. Review and merge the intended changes to the deployment branch. Confirm the production runner, IIS authorization, SQL permissions, and backups are ready.
-2. In GitHub, select **Actions > Deploy Golf Stats to IIS > Run workflow** and choose the trusted branch. Enter the SQL instance. Keep **Insert the sample courses, players and rounds** unchecked for a real database; the schema script is run every deployment, while sample data is opt-in.
-3. Approve the `production` environment deployment when prompted. The workflow validates Python 3.12 x64, the 64-bit ODBC Driver 18, `sqlcmd`, SQL Server Express version/connectivity, IIS HTTPS and Windows Authentication, URL Rewrite, ARR proxying, the configured service and required environment variables. Any failed prerequisite stops the deployment.
-4. After preflight, it runs `01_create_schema.sql`, optionally runs `02_seed_sample_data.sql`, copies the website, writes Windows-authenticated SQL settings, installs the requirements, restarts the Waitress service and checks the HTTPS health endpoint against the expected SQL Server Express database.
+The workflow is [.github/workflows/deploy-windows.yml](../.github/workflows/deploy-windows.yml). It has only the `workflow_dispatch` trigger: pushes, pull requests, schedules and tags do not deploy. The job runs on the `golf-stats-prod` runner, requests only repository `contents: read`, uses the `production` environment, and has a 30-minute timeout. A concurrency group prevents simultaneous production deployments; additional runs wait rather than cancel the active deployment.
 
-The workflow is triggered only by `workflow_dispatch`; it has no push, pull-request, schedule or tag trigger. SQL connection uses the runner's Windows identity, so no SQL password is stored in GitHub. The optional certificate-trust input should only be enabled for a trusted self-signed SQL certificate; use a properly trusted certificate and leave it off otherwise.
+1. Review and merge the intended changes to the approved deployment branch. Verify backups, runner status, IIS configuration, SQL permissions and service health first.
+2. In **Actions > Deploy Golf Stats to IIS**, select **Run workflow**, choose the approved branch, and set the inputs:
 
-The workflow does not provide automatic rollback or take a database backup. Confirm that a current backup exists before deploying schema changes and follow the rollback procedure above if the new app fails its health check. The app still has no per-user roles; IIS Windows Authentication gates access but every authorized user can use the app's write operations and database settings. Complete the deployment gate above before exposing the app to a shared audience.
+   | Input | Default | Guidance |
+   | --- | --- | --- |
+   | `sql_server` | `.\SQLEXPRESS` | SQL instance to deploy against. Use `.` for a default local instance, or the appropriate server/instance name. |
+   | `seed_sample_data` | `false` | Leave off for production. When enabled, inserts the repository's sample records. |
+   | `trust_server_certificate` | `false` | Enable only for a trusted self-signed SQL certificate. Prefer a correctly installed SQL TLS certificate. |
+
+3. Start the run. If GitHub pauses for the `production` environment, an authorized reviewer approves it. The job then checks Python 3.12 x64, ODBC Driver 18, `sqlcmd`, the local IIS site and HTTPS binding, Windows Authentication, URL Rewrite, ARR proxying, the existing service and SQL Server Express version/connectivity.
+4. After checks pass, the deploy script applies `database/01_create_schema.sql`, optionally seeds sample data, copies the website, writes Windows-authenticated SQL settings, installs Python requirements, restarts Waitress and checks the configured HTTPS health URL.
+5. Review the complete job log in the GitHub Actions run. Then perform the client-side acceptance tests below.
+
+### Troubleshooting the Workflow
+
+| Symptom | Checks |
+| --- | --- |
+| Run stays queued | Confirm the runner service is online and has all four required labels: `self-hosted`, `Windows`, `X64` and `golf-stats-prod`. |
+| Run waits for approval | An authorized reviewer must approve the `production` environment deployment. Check its branch restrictions if approval cannot proceed. |
+| Missing GitHub variable | Configure all four `GOLF_*` variables on the `production` environment, not only at repository level. |
+| Chocolatey package install returns 503 | The bootstrap retries transient feed errors. If it still fails, inspect `C:\ProgramData\chocolatey\logs\chocolatey.log`, check server access to the configured Chocolatey feed, then rerun the bootstrap. |
+| SQL connection or schema failure | Check the selected instance, SQL Server service, runner Windows identity, Windows Authentication and schema/database permissions. The deploy script requires SQL Server Express. |
+| Health check fails with 401/403 | Allow the runner service identity through IIS Windows Authentication/authorization and verify the HTTPS URL and certificate. |
+| Health check fails with 500 or times out | Check Waitress service state/logs, its database identity/permissions, `config.json`, SQL TLS trust and SQL connectivity. |
+| Python package install fails | Verify the runner has network access to the configured Python package index or an approved internal mirror. |
+
+The workflow does not take a database backup or automatically roll back an application or schema deployment. Confirm that a current backup can be restored before deploying. The app still has no per-user roles: IIS Windows Authentication gates access, but every authorized user can use the app's write operations and database settings. Complete the deployment security gate above before exposing it to a shared audience.
 
 ## Acceptance Tests
 
