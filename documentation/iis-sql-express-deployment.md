@@ -84,19 +84,13 @@ The repository includes `.github/workflows/deploy-windows.yml`, a manual-only de
 
 ### One-time GitHub and runner setup
 
-Run the bootstrap from an elevated 64-bit PowerShell session on Windows Server. Stage the official signed installers in a local directory, then pass their filenames. Example:
+Run the bootstrap from an elevated 64-bit PowerShell session on Windows Server. It uses `winget` to fetch packages, so ensure `winget` is available and the server can reach its configured source and package download locations:
 
 ```powershell
-.\scripts\install-golf-stats-prerequisites.ps1 `
-   -InstallerDirectory 'C:\Installers\GolfStats' `
-   -PythonInstaller 'python-3.12.x-amd64.exe' `
-   -OdbcDriverInstaller 'msodbcsql18.msi' `
-   -SqlCmdInstaller 'sqlcmd.msi' `
-   -UrlRewriteInstaller 'rewrite_amd64_en-US.msi' `
-   -ArrInstaller 'requestRouter_amd64.msi'
+.\scripts\install-golf-stats-prerequisites.ps1
 ```
 
-Use the actual filenames supplied by the official vendors. The script validates Authenticode signatures and expected publishers before installing, enables the IIS web, Windows Authentication and management features, installs Python 3.12 x64, ODBC Driver 18, `sqlcmd`, URL Rewrite and ARR, then enables ARR proxying. It is safe to rerun: already-installed components are detected and skipped. If an installer requests a reboot, reboot before continuing. SQLCMD and the ODBC driver are client tools/drivers only; this script does not install the SQL Server engine or create a database.
+The script enables the IIS web, Windows Authentication and management features, installs Python 3.12 x64, ODBC Driver 18, `sqlcmd`, URL Rewrite and ARR from exact winget package IDs, then enables ARR proxying. It is safe to rerun: already-installed components are detected and skipped. If a reboot is required, restart before continuing. `sqlcmd` and ODBC are client tools/drivers only; this script does not install the SQL Server engine or create a database.
 
 1. Install and register a self-hosted GitHub Actions runner on the Windows Server. Add the custom runner label `golf-stats-prod` in addition to the default `self-hosted`, `Windows` and `X64` labels. Run the runner as a dedicated deployment identity with only the local administrator and SQL deployment rights needed for this job. Add this identity to the IIS Windows Authentication allow-list so the workflow can call its HTTPS health endpoint.
 2. Do not allow pull-request jobs or untrusted repository code to run on this production runner. Workflows execute with the runner identity's server and database permissions. Restrict who can edit workflows and start deployments.

@@ -11,26 +11,20 @@ See the [IIS and SQL Express deployment guide](../documentation/iis-sql-express-
 
 ## Install Prerequisites
 
-Run this once on the Windows Server from an **elevated 64-bit PowerShell** session. Stage the official vendor installers in a local directory first. Example filenames below are illustrative; pass the actual filenames you downloaded.
+Run this once on the Windows Server from an **elevated 64-bit PowerShell** session. The script uses `winget` and the `winget` source to download and install missing packages; no installer files need to be staged manually.
 
 ```powershell
-.\scripts\install-golf-stats-prerequisites.ps1 `
-  -InstallerDirectory 'C:\Installers\GolfStats' `
-  -PythonInstaller 'python-3.12.x-amd64.exe' `
-  -OdbcDriverInstaller 'msodbcsql18.msi' `
-  -SqlCmdInstaller 'sqlcmd.msi' `
-  -UrlRewriteInstaller 'rewrite_amd64_en-US.msi' `
-  -ArrInstaller 'requestRouter_amd64.msi'
+.\scripts\install-golf-stats-prerequisites.ps1
 ```
 
-The script installs only missing components:
+The script requires `winget` to be installed and available on `PATH`, plus outbound access to the configured winget source and package download locations. It installs only missing components by exact package ID:
 
 - IIS, static content, logging, filtering, Windows Authentication and management features.
-- Python 3.12 x64, including `py.exe` and pip.
-- Microsoft ODBC Driver 18 for SQL Server and the `sqlcmd` client utility.
-- IIS URL Rewrite and Application Request Routing (ARR); ARR proxying is enabled.
+- Python 3.12 x64 (`Python.Python.3.12`), including `py.exe` and pip.
+- Microsoft ODBC Driver 18 (`Microsoft.msodbcsql.18`) and the `sqlcmd` client utility (`Microsoft.Sqlcmd`).
+- IIS URL Rewrite (`Microsoft.IIS.URLRewrite`) and Application Request Routing (`Microsoft.IIS.ApplicationRequestRouting`); ARR proxying is enabled.
 
-It checks Authenticode signatures and expected publishers before running vendor installers. If a component is already present, its installer filename can be omitted. `-InstallerDirectory` is still required and must be an existing directory. A reboot warning means restart the server before configuring the site or running the deployment workflow.
+Winget installs from its configured source and handles the package download and installer invocation. A reboot warning means restart the server before configuring the site or running the deployment workflow.
 
 This script does **not** install SQL Server, create a database, create an IIS site or TLS binding, configure the Waitress Windows service, or register the GitHub Actions runner. Those are separate setup tasks. Installer logs are written to the current user's temporary directory.
 

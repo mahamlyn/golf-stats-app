@@ -1,14 +1,5 @@
 [CmdletBinding()]
-param(
-    [Parameter(Mandatory = $true)]
-    [string]$InstallerDirectory,
-
-    [string]$PythonInstaller,
-    [string]$OdbcDriverInstaller,
-    [string]$SqlCmdInstaller,
-    [string]$UrlRewriteInstaller,
-    [string]$ArrInstaller
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -45,81 +36,21 @@ function Test-IisModule {
     return (@(Get-WebGlobalModule | ForEach-Object { $_.Name }) -contains $ModuleName)
 }
 
-function Resolve-Installer {
+function Install-WingetPackage {
     param(
-        [string]$FileName,
+        [string]$PackageId,
         [string]$Component,
         [bool]$AlreadyInstalled
     )
 
     if ($AlreadyInstalled) {
-        return $null
-    }
-    if ([string]::IsNullOrWhiteSpace($FileName)) {
-        throw "$Component is missing and its installer was not supplied."
-    }
-
-    $path = if ([IO.Path]::IsPathRooted($FileName)) {
-        $FileName
-    } else {
-        Join-Path $InstallerDirectory $FileName
-    }
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw "$Component installer not found: $path"
-    }
-    return (Resolve-Path -LiteralPath $path).Path
-}
-
-function Assert-SignedInstaller {
-    param(
-        [string]$Path,
-        [string]$ExpectedPublisher
-    )
-
-    if (-not $Path) {
+        Write-Host "$Component is already installed."
         return
     }
-    $signature = Get-AuthenticodeSignature -FilePath $Path
-    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch $ExpectedPublisher) {
-        throw "Installer signature validation failed for '$Path'. Expected a valid signature from $ExpectedPublisher."
-    }
-}
-
-function Install-Msi {
-    param(
-        [string]$Path,
-        [string[]]$Properties = @()
-    )
-
-    if (-not $Path) {
-        return
-    }
-    $logPath = Join-Path $env:TEMP ("GolfStats-{0}-{1}.log" -f [IO.Path]::GetFileNameWithoutExtension($Path), [guid]::NewGuid().ToString('N'))
-    $arguments = @('/i', ('"{0}"' -f $Path), '/qn', '/norestart', '/L*v', ('"{0}"' -f $logPath)) + $Properties
-    $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $arguments -Wait -PassThru
-    if ($process.ExitCode -notin @(0, 3010)) {
-        throw "Installer failed with exit code $($process.ExitCode). See $logPath"
-    }
-    if ($process.ExitCode -eq 3010) {
-        $script:RebootRequired = $true
-    }
-}
-
-function Install-Executable {
-    param(
-        [string]$Path,
-        [string]$Arguments
-    )
-
-    if (-not $Path) {
-        return
-    }
-    $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
-    if ($process.ExitCode -notin @(0, 3010)) {
-        throw "Installer '$Path' failed with exit code $($process.ExitCode)."
-    }
-    if ($process.ExitCode -eq 3010) {
-        $script:RebootRequired = $true
+    Write-Host "Installing $Component from the winget source..."
+    & winget install --id $PackageId --exact --source winget --silent --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        throw "winget failed to install $Component (package '$PackageId') with exit code $LASTEXITCODE."
     }
 }
 
@@ -139,8 +70,8 @@ if (-not [Environment]::Is64BitProcess) {
 if (-not (Test-Administrator)) {
     throw 'Run this script from an elevated PowerShell session.'
 }
-if (-not (Test-Path -LiteralPath $InstallerDirectory -PathType Container)) {
-    throw "Installer directory does not exist: $InstallerDirectory"
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    throw 'winget is not installed or not on PATH. Install/enable Microsoft App Installer and reopen elevated 64-bit PowerShell.'
 }
 if (-not (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue)) {
     throw 'Install-WindowsFeature is unavailable. Run this on Windows Server with ServerManager installed.'
@@ -160,18 +91,6 @@ $features = @(
 )
 $missingFeatures = @($features | Where-Object { -not (Get-WindowsFeature -Name $_).Installed })
 
-$pythonPath = Resolve-Installer -FileName $PythonInstaller -Component 'Python 3.12 x64' -AlreadyInstalled (Test-Python312X64)
-$odbcPath = Resolve-Installer -FileName $OdbcDriverInstaller -Component 'Microsoft ODBC Driver 18 x64' -AlreadyInstalled (Test-Odbc18)
-$sqlcmdPath = Resolve-Installer -FileName $SqlCmdInstaller -Component 'Microsoft sqlcmd' -AlreadyInstalled ([bool](Get-Command sqlcmd -ErrorAction SilentlyContinue))
-$rewritePath = Resolve-Installer -FileName $UrlRewriteInstaller -Component 'IIS URL Rewrite' -AlreadyInstalled (Test-IisModule -ModuleName 'RewriteModule')
-$arrPath = Resolve-Installer -FileName $ArrInstaller -Component 'IIS Application Request Routing' -AlreadyInstalled (Test-IisModule -ModuleName 'ApplicationRequestRouting')
-
-Assert-SignedInstaller -Path $pythonPath -ExpectedPublisher 'Python Software Foundation'
-Assert-SignedInstaller -Path $odbcPath -ExpectedPublisher 'Microsoft Corporation'
-Assert-SignedInstaller -Path $sqlcmdPath -ExpectedPublisher 'Microsoft Corporation'
-Assert-SignedInstaller -Path $rewritePath -ExpectedPublisher 'Microsoft Corporation'
-Assert-SignedInstaller -Path $arrPath -ExpectedPublisher 'Microsoft Corporation'
-
 Write-Host 'Installing required Windows Server IIS features...'
 if ($missingFeatures.Count -gt 0) {
     $featureResult = Install-WindowsFeature -Name $missingFeatures -IncludeManagementTools
@@ -183,12 +102,12 @@ if ($missingFeatures.Count -gt 0) {
     }
 }
 
-Write-Host 'Installing missing signed prerequisites...'
-Install-Executable -Path $pythonPath -Arguments '/quiet InstallAllUsers=1 PrependPath=1 Include_launcher=1 Include_pip=1'
-Install-Msi -Path $odbcPath -Properties @('IACCEPTMSODBCSQLLICENSETERMS=YES')
-Install-Msi -Path $sqlcmdPath -Properties @('IACCEPTSQLCMDLICENSETERMS=YES')
-Install-Msi -Path $rewritePath
-Install-Msi -Path $arrPath
+Write-Host 'Installing missing prerequisites with winget...'
+Install-WingetPackage -PackageId 'Python.Python.3.12' -Component 'Python 3.12 x64' -AlreadyInstalled (Test-Python312X64)
+Install-WingetPackage -PackageId 'Microsoft.msodbcsql.18' -Component 'Microsoft ODBC Driver 18 x64' -AlreadyInstalled (Test-Odbc18)
+Install-WingetPackage -PackageId 'Microsoft.Sqlcmd' -Component 'Microsoft sqlcmd' -AlreadyInstalled ([bool](Get-Command sqlcmd -ErrorAction SilentlyContinue))
+Install-WingetPackage -PackageId 'Microsoft.IIS.URLRewrite' -Component 'IIS URL Rewrite' -AlreadyInstalled (Test-IisModule -ModuleName 'RewriteModule')
+Install-WingetPackage -PackageId 'Microsoft.IIS.ApplicationRequestRouting' -Component 'IIS Application Request Routing' -AlreadyInstalled (Test-IisModule -ModuleName 'ApplicationRequestRouting')
 Refresh-ProcessPath
 
 Import-Module WebAdministration -ErrorAction Stop
