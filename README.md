@@ -27,7 +27,8 @@ Working: a SQL Server Express database and a local web app. Editing or deleting 
 | [database/01_create_schema.sql](database/01_create_schema.sql) | Creates the database, tables, trigger, views and procedures. |
 | [database/02_seed_sample_data.sql](database/02_seed_sample_data.sql) | Sample courses, players, rounds and scores. |
 | [website/](website/) | Flask API and single-page web app (see the [website README](website/README.md)). |
-| [documentation/](documentation/) | [Usage guide](documentation/usage-documentation.md) and [site documentation](documentation/site-documentation.md). |
+| [documentation/](documentation/) | [Usage guide](documentation/usage-documentation.md), [site documentation](documentation/site-documentation.md) and [IIS / SQL Express deployment guide](documentation/iis-sql-express-deployment.md). |
+| [scripts/](scripts/) | [Script README](scripts/README.md), prerequisite installer and deployment script. |
 | [images/](images/) | Images used in the documentation. |
 
 ## Data Model Overview
@@ -53,4 +54,4 @@ See the [ER diagram](database/README.md#entity-relationship-diagram) for details
 
 4. Open http://127.0.0.1:5001. If the database is not on `.\SQLEXPRESS`, use the **Settings** page to set the connection.
 
-See the [usage guide](documentation/usage-documentation.md) for a walkthrough and the [site documentation](documentation/site-documentation.md) for the API and architecture.
+See the [usage guide](documentation/usage-documentation.md) for a walkthrough, the [site documentation](documentation/site-documentation.md) for the API and architecture, and the [IIS / SQL Express deployment guide](documentation/iis-sql-express-deployment.md) for Windows Server hosting requirements.

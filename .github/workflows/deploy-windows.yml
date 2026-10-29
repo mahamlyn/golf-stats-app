@@ -1,0 +1,49 @@
+name: Deploy Golf Stats to IIS
+
+on:
+  workflow_dispatch:
+    inputs:
+      sql_server:
+        description: SQL Server instance, such as .\SQLEXPRESS
+        required: true
+        default: .\SQLEXPRESS
+        type: string
+      seed_sample_data:
+        description: Insert the sample courses, players and rounds
+        required: true
+        default: false
+        type: boolean
+      trust_server_certificate:
+        description: Trust the SQL Server certificate (only for a trusted self-signed certificate)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: golf-stats-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Validate and deploy
+    environment: production
+    runs-on: [self-hosted, Windows, X64, golf-stats-prod]
+    timeout-minutes: 30
+    env:
+      GOLF_SQL_SERVER: ${{ inputs.sql_server }}
+      GOLF_SEED_SAMPLE_DATA: ${{ inputs.seed_sample_data }}
+      GOLF_TRUST_SERVER_CERTIFICATE: ${{ inputs.trust_server_certificate }}
+      GOLF_DEPLOY_ROOT: ${{ vars.GOLF_DEPLOY_ROOT }}
+      GOLF_SERVICE_NAME: ${{ vars.GOLF_SERVICE_NAME }}
+      GOLF_IIS_SITE_NAME: ${{ vars.GOLF_IIS_SITE_NAME }}
+      GOLF_HEALTH_URL: ${{ vars.GOLF_HEALTH_URL }}
+    steps:
+      - name: Check out selected ref
+        uses: actions/checkout@v4
+
+      - name: Validate prerequisites, deploy database and app
+        shell: pwsh
+        run: ./scripts/deploy-golf-stats.ps1
