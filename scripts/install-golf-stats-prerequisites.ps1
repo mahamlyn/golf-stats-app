@@ -36,9 +36,9 @@ function Test-IisModule {
     return (@(Get-WebGlobalModule | ForEach-Object { $_.Name }) -contains $ModuleName)
 }
 
-function Install-WingetPackage {
+function Install-ChocolateyPackage {
     param(
-        [string]$PackageId,
+        [string]$PackageName,
         [string]$Component,
         [bool]$AlreadyInstalled
     )
@@ -47,10 +47,35 @@ function Install-WingetPackage {
         Write-Host "$Component is already installed."
         return
     }
-    Write-Host "Installing $Component from the winget source..."
-    & winget install --id $PackageId --exact --source winget --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) {
-        throw "winget failed to install $Component (package '$PackageId') with exit code $LASTEXITCODE."
+
+    $maxAttempts = 4
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Write-Host "Installing $Component with Chocolatey package '$PackageName' (attempt $attempt of $maxAttempts)..."
+        $installOutput = @(& choco install $PackageName --yes --no-progress --ignore-http-cache 2>&1)
+        $exitCode = $LASTEXITCODE
+        foreach ($line in $installOutput) {
+            Write-Host ([string]$line)
+        }
+
+        if ($exitCode -in @(0, 3010, 1641)) {
+            if ($exitCode -in @(3010, 1641)) {
+                $script:RebootRequired = $true
+                Write-Warning "$Component installed successfully but Chocolatey reported that a reboot is required."
+            }
+            return
+        }
+
+        $outputText = $installOutput -join [Environment]::NewLine
+        $isTransientFailure = $outputText -match '(?i)(\b(502|503|504)\b|temporarily unavailable|service unavailable|failed to fetch results|unable to connect|connection.{0,30}(reset|timed out))'
+        if ($isTransientFailure -and $attempt -lt $maxAttempts) {
+            $delaySeconds = 15 * $attempt
+            Write-Warning "Chocolatey reported a transient feed/network error for '$PackageName'. Retrying in $delaySeconds seconds."
+            Start-Sleep -Seconds $delaySeconds
+            continue
+        }
+
+        $logPath = Join-Path $env:ProgramData 'chocolatey\logs\chocolatey.log'
+        throw "Chocolatey failed to install $Component (package '$PackageName') with exit code $exitCode. Review '$logPath'. Output: $outputText"
     }
 }
 
@@ -70,8 +95,20 @@ if (-not [Environment]::Is64BitProcess) {
 if (-not (Test-Administrator)) {
     throw 'Run this script from an elevated PowerShell session.'
 }
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    throw 'winget is not installed or not on PATH. Install/enable Microsoft App Installer and reopen elevated 64-bit PowerShell.'
+if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+    throw 'Chocolatey is not installed or not on PATH. Install Chocolatey 2.7.5 or later before running this script.'
+}
+$chocolateyVersionOutput = & choco --version
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not read the installed Chocolatey version.'
+}
+try {
+    $chocolateyVersion = [version]($chocolateyVersionOutput | Select-Object -First 1)
+} catch {
+    throw "Could not parse the Chocolatey version '$chocolateyVersionOutput'."
+}
+if ($chocolateyVersion -lt [version]'2.7.5') {
+    throw "Chocolatey 2.7.5 or later is required; found $chocolateyVersion."
 }
 if (-not (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue)) {
     throw 'Install-WindowsFeature is unavailable. Run this on Windows Server with ServerManager installed.'
@@ -102,12 +139,12 @@ if ($missingFeatures.Count -gt 0) {
     }
 }
 
-Write-Host 'Installing missing prerequisites with winget...'
-Install-WingetPackage -PackageId 'Python.Python.3.12' -Component 'Python 3.12 x64' -AlreadyInstalled (Test-Python312X64)
-Install-WingetPackage -PackageId 'Microsoft.msodbcsql.18' -Component 'Microsoft ODBC Driver 18 x64' -AlreadyInstalled (Test-Odbc18)
-Install-WingetPackage -PackageId 'Microsoft.Sqlcmd' -Component 'Microsoft sqlcmd' -AlreadyInstalled ([bool](Get-Command sqlcmd -ErrorAction SilentlyContinue))
-Install-WingetPackage -PackageId 'Microsoft.IIS.URLRewrite' -Component 'IIS URL Rewrite' -AlreadyInstalled (Test-IisModule -ModuleName 'RewriteModule')
-Install-WingetPackage -PackageId 'Microsoft.IIS.ApplicationRequestRouting' -Component 'IIS Application Request Routing' -AlreadyInstalled (Test-IisModule -ModuleName 'ApplicationRequestRouting')
+Write-Host 'Installing missing prerequisites with Chocolatey...'
+Install-ChocolateyPackage -PackageName 'python312' -Component 'Python 3.12 x64' -AlreadyInstalled (Test-Python312X64)
+Install-ChocolateyPackage -PackageName 'sqlserver-odbcdriver-18' -Component 'Microsoft ODBC Driver 18 x64' -AlreadyInstalled (Test-Odbc18)
+Install-ChocolateyPackage -PackageName 'sqlserver-cmdlineutils' -Component 'Microsoft sqlcmd' -AlreadyInstalled ([bool](Get-Command sqlcmd -ErrorAction SilentlyContinue))
+Install-ChocolateyPackage -PackageName 'urlrewrite' -Component 'IIS URL Rewrite' -AlreadyInstalled (Test-IisModule -ModuleName 'RewriteModule')
+Install-ChocolateyPackage -PackageName 'iis-arr' -Component 'IIS Application Request Routing' -AlreadyInstalled (Test-IisModule -ModuleName 'ApplicationRequestRouting')
 Refresh-ProcessPath
 
 Import-Module WebAdministration -ErrorAction Stop

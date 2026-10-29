@@ -11,22 +11,22 @@ See the [IIS and SQL Express deployment guide](../documentation/iis-sql-express-
 
 ## Install Prerequisites
 
-Run this once on the Windows Server from an **elevated 64-bit PowerShell** session. The script uses `winget` and the `winget` source to download and install missing packages; no installer files need to be staged manually.
+Run this once on Windows Server 2022 from an **elevated 64-bit PowerShell** session. The script uses the existing Chocolatey installation to download and install missing packages; no installer files need to be staged manually. Chocolatey 2.7.5 or later is required.
 
 ```powershell
 .\scripts\install-golf-stats-prerequisites.ps1
 ```
 
-The script requires `winget` to be installed and available on `PATH`, plus outbound access to the configured winget source and package download locations. It installs only missing components by exact package ID:
+The script requires `choco.exe` to be available on `PATH`, plus access to the configured Chocolatey source and package download locations. It installs only missing components:
 
-- IIS, static content, logging, filtering, Windows Authentication and management features.
-- Python 3.12 x64 (`Python.Python.3.12`), including `py.exe` and pip.
-- Microsoft ODBC Driver 18 (`Microsoft.msodbcsql.18`) and the `sqlcmd` client utility (`Microsoft.Sqlcmd`).
-- IIS URL Rewrite (`Microsoft.IIS.URLRewrite`) and Application Request Routing (`Microsoft.IIS.ApplicationRequestRouting`); ARR proxying is enabled.
+- IIS, static content, logging, filtering, Windows Authentication and management features, using `Install-WindowsFeature`.
+- Python 3.12 x64 (`python312`), including `py.exe` and pip.
+- Microsoft ODBC Driver 18 (`sqlserver-odbcdriver-18`) and the `sqlcmd` client utility (`sqlserver-cmdlineutils`).
+- IIS URL Rewrite (`urlrewrite`) and Application Request Routing (`iis-arr`); ARR proxying is enabled.
 
-Winget installs from its configured source and handles the package download and installer invocation. A reboot warning means restart the server before configuring the site or running the deployment workflow.
+Chocolatey handles package downloads and installer invocation. The bootstrap retries transient feed/network failures up to three times after the initial attempt, with increasing waits, and bypasses Chocolatey's HTTP cache for each attempt. If it still fails, review `%ProgramData%\chocolatey\logs\chocolatey.log`; rerunning the script is safe because installed features and packages are detected. A reboot warning means restart the server before configuring the site or running the deployment workflow.
 
-This script does **not** install SQL Server, create a database, create an IIS site or TLS binding, configure the Waitress Windows service, or register the GitHub Actions runner. Those are separate setup tasks. Installer logs are written to the current user's temporary directory.
+This script does **not** install SQL Server, create a database, create an IIS site or TLS binding, configure the Waitress Windows service, or register the GitHub Actions runner. Those are separate setup tasks. Review Chocolatey's logs if a package installation fails.
 
 ## Deploy the App
 
